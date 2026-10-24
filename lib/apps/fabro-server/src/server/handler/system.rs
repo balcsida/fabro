@@ -496,7 +496,10 @@ async fn get_github_repo(
             let install_url = creds
                 .installation_url(&state.github_host, &owner)
                 .unwrap_or_else(|| {
-                    format!("https://github.com/organizations/{owner}/settings/installations")
+                    format!(
+                        "{}/organizations/{owner}/settings/installations",
+                        state.github_host.web_url()
+                    )
                 });
 
             let client = match state.http_client() {

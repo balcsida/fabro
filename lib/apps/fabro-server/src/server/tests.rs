@@ -6305,6 +6305,60 @@ slug = "fabro"
 }
 
 #[tokio::test]
+async fn auth_login_github_redirects_to_the_configured_enterprise_host() {
+    let source = r#"
+_version = 1
+
+[server.auth]
+methods = ["github"]
+
+[server.web]
+enabled = true
+url = "http://localhost:3000"
+
+[server.auth.github]
+allowed_usernames = ["octocat"]
+
+[server.integrations.github]
+app_id = "123"
+client_id = "Iv1.testclient"
+slug = "fabro"
+web_url = "https://ghe.example.com"
+"#;
+    let app = build_router(
+        test_app_state_with_session_key(
+            server_settings_from_toml(source),
+            manifest_run_defaults_from_toml(source),
+            Some("github-redirect-test-key-0123456789"),
+        ),
+        AuthMode::Enabled(ConfiguredAuth {
+            methods:    vec![ServerAuthMethod::Github],
+            dev_token:  None,
+            jwt_key:    None,
+            jwt_issuer: None,
+        }),
+    );
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/auth/login/github")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let response = checked_response!(response, StatusCode::SEE_OTHER).await;
+    let location = response
+        .headers()
+        .get(axum::http::header::LOCATION)
+        .and_then(|value| value.to_str().ok())
+        .unwrap();
+    assert!(location.starts_with("https://ghe.example.com/login/oauth/authorize?"));
+}
+
+#[tokio::test]
 async fn logout_redirects_to_login_page() {
     let app = test_app_with();
 

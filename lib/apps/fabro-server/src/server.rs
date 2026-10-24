@@ -159,7 +159,7 @@ use crate::worker_control::{
 use crate::worker_runtime::{LocalWorkerRuntime, WorkerLaunchSpec, WorkerRef, WorkerRuntime};
 use crate::worker_token::{WorkerScopeSet, WorkerTokenKeys, issue_worker_token_with_scopes};
 use crate::{
-    canonical_host, demo, diagnostics, run_manifest, security_headers, static_files, web_auth,
+    canonical_host, csp, demo, diagnostics, run_manifest, security_headers, static_files, web_auth,
 };
 
 mod automation_scheduler;
@@ -1924,8 +1924,9 @@ pub fn build_router_with_options(
     } = options;
     let translation_state = Arc::clone(&state);
     let state_for_canonical_host = Arc::clone(&state);
-    let github_endpoints =
-        github_endpoints.unwrap_or_else(|| Arc::new(GithubEndpoints::production_defaults()));
+    let github_endpoints = github_endpoints
+        .unwrap_or_else(|| Arc::new(GithubEndpoints::from_host(&state.github_host)));
+    let csp_policy = Arc::new(csp::policy(&state.github_host));
     let webhook_secret = state.github_webhook_secret.clone();
     let principal_layer = middleware::from_fn_with_state(Arc::clone(&state), principal_middleware);
     let api_common = if web_enabled {
@@ -2032,7 +2033,10 @@ pub fn build_router_with_options(
             },
             canonical_host::redirect_middleware,
         ))
-        .layer(middleware::from_fn(security_headers::layer))
+        .layer(middleware::from_fn_with_state(
+            csp_policy,
+            security_headers::layer,
+        ))
         .layer(middleware::from_fn(http_log_middleware))
         .layer(middleware::from_fn(request_id::layer))
 }

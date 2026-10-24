@@ -4,8 +4,9 @@ use base64::engine::general_purpose::STANDARD;
 use chrono::{DateTime, Utc};
 use fabro_redact::DisplaySafeUrl;
 use fabro_static::EnvVars;
-use fabro_types::PullRequestGithubDetail;
 use fabro_types::settings::run::MergeStrategy;
+use fabro_types::settings::server::GithubIntegrationSettings;
+use fabro_types::{GitHubHost, PullRequestGithubDetail};
 use serde::Deserialize;
 use tokio::process::Command;
 
@@ -22,8 +23,6 @@ pub(crate) mod tests_mock;
 
 pub use access::GitHubRepositoryAccess;
 pub use identity::GitHubAccountIdentity;
-
-pub const GITHUB_API_BASE_URL: &str = "https://api.github.com";
 
 /// Git config key that routes github.com HTTPS credentials through
 /// [`GITHUB_CREDENTIAL_HELPER`].
@@ -52,14 +51,44 @@ pub fn apply_probe_git_env(command: &mut Command, token: &str) {
         .env("GIT_CONFIG_VALUE_0", GITHUB_CREDENTIAL_HELPER);
 }
 
-/// Returns the GitHub API base URL, allowing override via `GITHUB_BASE_URL` env
-/// var.
+/// REST API base from `GITHUB_BASE_URL` or github.com, for call sites that
+/// have no settings to resolve a [`GitHubHost`] from.
 #[expect(
     clippy::disallowed_methods,
     reason = "GitHub API client exposes a documented process-env base URL override."
 )]
 pub fn github_api_base_url() -> String {
-    std::env::var(EnvVars::GITHUB_BASE_URL).unwrap_or_else(|_| GITHUB_API_BASE_URL.to_string())
+    std::env::var(EnvVars::GITHUB_BASE_URL)
+        .unwrap_or_else(|_| GitHubHost::default().api_url().to_string())
+}
+
+/// Resolves the GitHub deployment from settings, letting `GITHUB_WEB_URL`
+/// override the web origin and `GITHUB_BASE_URL` override the REST API base.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "GitHub API client exposes documented process-env web origin and API base overrides."
+)]
+pub fn github_host(settings: &GithubIntegrationSettings) -> anyhow::Result<GitHubHost> {
+    host_with_overrides(
+        &settings.host,
+        std::env::var(EnvVars::GITHUB_WEB_URL).ok().as_deref(),
+        std::env::var(EnvVars::GITHUB_BASE_URL).ok().as_deref(),
+    )
+}
+
+/// A `web_url` override re-derives the API URL, since the settings' API URL
+/// belonged to the old origin; an `api_url` override always wins.
+fn host_with_overrides(
+    configured: &GitHubHost,
+    web_url: Option<&str>,
+    api_url: Option<&str>,
+) -> anyhow::Result<GitHubHost> {
+    let host = match (web_url, api_url) {
+        (None, None) => return Ok(configured.clone()),
+        (None, Some(api)) => GitHubHost::new(configured.web_url(), Some(api)),
+        (Some(web), api) => GitHubHost::new(web, api),
+    };
+    host.context("invalid GITHUB_WEB_URL or GITHUB_BASE_URL override")
 }
 
 /// Bundle of GitHub credentials and the API base URL, threaded through every
@@ -1641,6 +1670,24 @@ mod tests {
     use tracing_subscriber::registry;
 
     use super::*;
+
+    #[test]
+    fn host_overrides_apply_over_settings() {
+        let configured = GitHubHost::new("https://ghe.example.com", None).unwrap();
+        assert_eq!(
+            host_with_overrides(&configured, None, None).unwrap(),
+            configured
+        );
+
+        let api_only = host_with_overrides(&configured, None, Some("http://127.0.0.1:9")).unwrap();
+        assert_eq!(api_only.web_url(), "https://ghe.example.com");
+        assert_eq!(api_only.api_url(), "http://127.0.0.1:9");
+
+        let web = host_with_overrides(&configured, Some("https://octocorp.ghe.com"), None).unwrap();
+        assert_eq!(web.api_url(), "https://api.octocorp.ghe.com");
+
+        assert!(host_with_overrides(&configured, Some("http://ghe.example.com"), None).is_err());
+    }
 
     #[test]
     fn decode_pem_env_accepts_raw_pem() {

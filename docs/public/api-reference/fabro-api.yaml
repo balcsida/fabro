@@ -15672,7 +15672,17 @@ components:
         - client_id
         - slug
         - webhooks
+        - web_url
+        - api_url
       properties:
+        web_url:
+          type: string
+          description: Web origin of the GitHub deployment, without a trailing slash.
+          example: https://github.com
+        api_url:
+          type: string
+          description: REST API base URL of the GitHub deployment, without a trailing slash.
+          example: https://api.github.com
         enabled:
           type: boolean
         strategy:

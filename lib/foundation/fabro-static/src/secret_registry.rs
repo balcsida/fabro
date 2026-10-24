@@ -123,6 +123,7 @@ mod tests {
         for name in [
             EnvVars::GH_TOKEN,
             EnvVars::GITHUB_BASE_URL,
+            EnvVars::GITHUB_WEB_URL,
             EnvVars::SLACK_BASE_URL,
             EnvVars::DAYTONA_API_URL,
             EnvVars::DAYTONA_ORGANIZATION_ID,

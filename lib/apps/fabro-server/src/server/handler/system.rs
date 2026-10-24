@@ -455,7 +455,7 @@ async fn get_github_repo(
     }
     let settings = state.server_settings();
     let github_settings = &settings.server.integrations.github;
-    let base_url = fabro_github::github_api_base_url();
+    let base_url = state.github_host.api_url();
     let (token, client) = match github_settings.strategy {
         GithubIntegrationStrategy::App => {
             if github_settings.app_id.is_none() {

@@ -1152,28 +1152,28 @@ pub struct AppState {
     control_request_locks: KeyedMutex<RunId>,
     parent_link_lock: AsyncMutex<()>,
 
-    pub(super) server_secrets: ServerSecrets,
-    pub(crate) llm_source: Arc<dyn CredentialProvider>,
+    pub(super) server_secrets:  ServerSecrets,
+    pub(crate) llm_source:      Arc<dyn CredentialProvider>,
     /// The database pool the stores share, for the Petri run store a
     /// server-process run writes its records through.
-    pub(crate) db_pool: DbPool,
-    manifest_run_defaults: RwLock<Arc<RunLayer>>,
-    manifest_run_settings: RwLock<std::result::Result<RunNamespace, SharedError>>,
+    pub(crate) db_pool:         DbPool,
+    manifest_run_defaults:      RwLock<Arc<RunLayer>>,
+    manifest_run_settings:      RwLock<std::result::Result<RunNamespace, SharedError>>,
     pub(crate) server_settings: RwLock<Arc<ServerSettings>>,
-    effective_web_url: RwLock<String>,
-    catalog: RwLock<Arc<Catalog>>,
-    pub(crate) env_lookup: EnvLookup,
-    pub(crate) github_api_base_url: String,
-    active_config_path: PathBuf,
-    http_client: Option<fabro_http::HttpClient>,
-    sandbox_inventory: SandboxInventory,
-    shutdown: CancellationToken,
-    shutting_down: AtomicBool,
+    effective_web_url:          RwLock<String>,
+    catalog:                    RwLock<Arc<Catalog>>,
+    pub(crate) env_lookup:      EnvLookup,
+    pub(crate) github_host:     fabro_types::GitHubHost,
+    active_config_path:         PathBuf,
+    http_client:                Option<fabro_http::HttpClient>,
+    sandbox_inventory:          SandboxInventory,
+    shutdown:                   CancellationToken,
+    shutting_down:              AtomicBool,
     /// Test switch: execute runs in this process instead of a worker.
-    execute_in_process: bool,
-    slack_service: Option<Arc<SlackService>>,
-    slack_started: AtomicBool,
-    github_webhook_secret: Option<String>,
+    execute_in_process:         bool,
+    slack_service:              Option<Arc<SlackService>>,
+    slack_started:              AtomicBool,
+    github_webhook_secret:      Option<String>,
 }
 
 pub(crate) struct AppStores {
@@ -1277,7 +1277,7 @@ impl AppState {
             .map_err(|source| RunMaterializeError::LoadCredentials { source })?;
         ProductionAutomationRunMaterializer::new(
             credentials,
-            self.github_api_base_url.clone(),
+            self.github_host.api_url().to_string(),
             self.http_client.clone(),
             Arc::clone(&self.automation_repo_cache),
             fabro_workflow_version::WorkflowVersionStore::new(self.store_ref().blobs()),
@@ -1352,7 +1352,7 @@ pub(crate) struct AppStateConfig {
     pub(crate) preloaded_vault: Vault,
     pub(crate) server_secrets: ServerSecrets,
     pub(crate) env_lookup: EnvLookup,
-    pub(crate) github_api_base_url: Option<String>,
+    pub(crate) github_host: Option<fabro_types::GitHubHost>,
     pub(crate) active_config_path: PathBuf,
     pub(crate) http_client: Option<fabro_http::HttpClient>,
     pub(crate) sandbox_inventory: Option<SandboxInventory>,
@@ -2519,7 +2519,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         preloaded_vault,
         server_secrets,
         env_lookup,
-        github_api_base_url,
+        github_host,
         active_config_path,
         http_client,
         sandbox_inventory,
@@ -2643,7 +2643,10 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         }
     };
     let worker_tokens = worker_token_keys_from_server_secrets(&server_secrets)?;
-    let github_api_base_url = github_api_base_url.unwrap_or_else(fabro_github::github_api_base_url);
+    let github_host = match github_host {
+        Some(host) => host,
+        None => fabro_github::github_host(&current_server_settings.server.integrations.github)?,
+    };
     let storage_root = PathBuf::from(&current_server_settings.server.storage.root);
     let automation_repo_cache = Arc::new(GitRepoCache::new(
         Storage::new(&storage_root)
@@ -2721,7 +2724,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         effective_web_url: RwLock::new(current_effective_web_url),
         catalog: RwLock::new(current_catalog),
         env_lookup: Arc::clone(&env_lookup),
-        github_api_base_url,
+        github_host,
         active_config_path,
         http_client,
         sandbox_inventory,

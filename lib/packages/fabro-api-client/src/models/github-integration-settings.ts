@@ -27,4 +27,12 @@ export interface GithubIntegrationSettings {
     'client_id': string | null;
     'slug': string | null;
     'webhooks': IntegrationWebhooksSettings | null;
+    /**
+     * Web origin of the GitHub deployment, without a trailing slash.
+     */
+    'web_url': string;
+    /**
+     * REST API base URL of the GitHub deployment, without a trailing slash.
+     */
+    'api_url': string;
 }

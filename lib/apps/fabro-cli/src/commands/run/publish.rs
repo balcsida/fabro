@@ -39,7 +39,7 @@ use fabro_static::EnvVars;
 use fabro_store::platform_records::{PlatformRecord, PullRequestCreatedRecord};
 use fabro_types::settings::run::{PullRequestSettings, RunMode};
 use fabro_types::settings::server::GithubIntegrationStrategy;
-use fabro_types::{GitHubRepositorySlug, RunId, RunSpec, RunTarget};
+use fabro_types::{GitHubHost, GitHubRepositorySlug, RunId, RunSpec, RunTarget};
 use fabro_vault::Vault;
 use fabro_workflow::pull_request::{self, AutoMergeOptions, OpenPullRequestRequest};
 use tokio::time;
@@ -51,6 +51,12 @@ const PUSH_TIMEOUT: Duration = Duration::from_mins(5);
 /// minted token can take a moment to reach every GitHub replica.
 const PUSH_ATTEMPTS: u32 = 3;
 const PUSH_RETRY_DELAY: Duration = Duration::from_secs(2);
+
+/// The GitHub deployment the server is configured for.
+pub(super) fn github_host() -> Result<GitHubHost> {
+    let settings = ServerSettingsBuilder::load_default().context("loading the server settings")?;
+    fabro_github::github_host(&settings.server.integrations.github)
+}
 
 /// The server's GitHub credentials as the worker reaches them, or `None`
 /// when none are configured.
@@ -313,8 +319,8 @@ impl RunPublisher for GitHubPublisher {
             .credentials
             .as_ref()
             .ok_or_else(|| "GitHub credentials are unavailable".to_string())?;
-        let base_url = fabro_github::github_api_base_url();
-        let context = GitHubContext::new(credentials, &base_url);
+        let host = github_host().map_err(|err| format!("{err:#}"))?;
+        let context = GitHubContext::new(credentials, host.api_url());
         Box::pin(self.open_pull_request(context, settings, publication)).await
     }
 }

@@ -124,6 +124,7 @@ impl EnvVars {
     pub const GITHUB_APP_WEBHOOK_SECRET: &'static str = "GITHUB_APP_WEBHOOK_SECRET";
     pub const GITHUB_BASE_URL: &'static str = "GITHUB_BASE_URL";
     pub const GITHUB_TOKEN: &'static str = "GITHUB_TOKEN";
+    pub const GITHUB_WEB_URL: &'static str = "GITHUB_WEB_URL";
     pub const OAUTH_CALLBACK_PATH: &'static str = "OAUTH_CALLBACK_PATH";
     pub const OAUTH_CLIENT_ID: &'static str = "OAUTH_CLIENT_ID";
     pub const OAUTH_ISSUER: &'static str = "OAUTH_ISSUER";
@@ -285,6 +286,7 @@ mod tests {
             EnvVars::GITHUB_APP_WEBHOOK_SECRET,
             EnvVars::GITHUB_BASE_URL,
             EnvVars::GITHUB_TOKEN,
+            EnvVars::GITHUB_WEB_URL,
             EnvVars::OAUTH_CALLBACK_PATH,
             EnvVars::OAUTH_CLIENT_ID,
             EnvVars::OAUTH_ISSUER,

@@ -737,7 +737,7 @@ where
         preloaded_vault: startup_vault.into_vault(),
         server_secrets,
         env_lookup,
-        github_api_base_url: None,
+        github_host: None,
         active_config_path,
         http_client: None,
         sandbox_inventory: None,

@@ -36,7 +36,7 @@ fn env_var(name: &str) -> String {
 async fn ls_remote_with_token(slug: &GitHubRepositorySlug, token: &str) -> bool {
     let url = slug.https_url(&GitHubHost::default());
     let mut command = Command::new("git");
-    fabro_github::apply_probe_git_env(&mut command, token);
+    fabro_github::apply_probe_git_env(&mut command, &GitHubHost::default(), token);
     let output = command
         .args(["ls-remote", &url, "HEAD"])
         .stdout(Stdio::null())

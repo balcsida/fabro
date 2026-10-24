@@ -121,6 +121,8 @@ mod tests {
     #[test]
     fn leaves_legacy_aliases_and_non_secret_config_unclassified() {
         for name in [
+            EnvVars::GH_ENTERPRISE_TOKEN,
+            EnvVars::GH_HOST,
             EnvVars::GH_TOKEN,
             EnvVars::GITHUB_BASE_URL,
             EnvVars::GITHUB_WEB_URL,

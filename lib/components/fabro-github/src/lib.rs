@@ -25,10 +25,6 @@ pub(crate) mod tests_mock;
 pub use access::GitHubRepositoryAccess;
 pub use identity::GitHubAccountIdentity;
 
-/// Git config key that routes github.com HTTPS credentials through
-/// [`GITHUB_CREDENTIAL_HELPER`].
-pub const GITHUB_CREDENTIAL_HELPER_KEY: &str = "credential.https://github.com.helper";
-
 /// Secret-free git credential helper: reads `$GITHUB_TOKEN` from the
 /// invoking git process's environment at invocation time, so the token never
 /// lands in git configuration, argv, or rendered errors. Non-`get`
@@ -37,18 +33,18 @@ pub const GITHUB_CREDENTIAL_HELPER_KEY: &str = "credential.https://github.com.he
 /// test, so the probes always exercise exactly what the bridge configures.
 pub const GITHUB_CREDENTIAL_HELPER: &str = r#"!f() { if [ "$1" = get ]; then echo username=x-access-token; echo "password=$GITHUB_TOKEN"; fi; }; f"#;
 
-/// Configure a `git` invocation to authenticate to github.com through
+/// Configure a `git` invocation to authenticate to `host` through
 /// [`GITHUB_CREDENTIAL_HELPER`] with `token`, isolated from user/system git
 /// configuration and terminal prompts. The token is passed only through the
 /// child process environment.
-pub fn apply_probe_git_env(command: &mut Command, token: &str) {
+pub fn apply_probe_git_env(command: &mut Command, host: &GitHubHost, token: &str) {
     command
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_CONFIG_NOSYSTEM", "1")
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .env(EnvVars::GITHUB_TOKEN, token)
         .env("GIT_CONFIG_COUNT", "1")
-        .env("GIT_CONFIG_KEY_0", GITHUB_CREDENTIAL_HELPER_KEY)
+        .env("GIT_CONFIG_KEY_0", host.credential_helper_key())
         .env("GIT_CONFIG_VALUE_0", GITHUB_CREDENTIAL_HELPER);
 }
 
@@ -1708,6 +1704,27 @@ mod tests {
             private_key_pem: test_rsa_key().to_string(),
             slug:            slug.map(str::to_string),
         }
+    }
+
+    #[test]
+    fn probe_git_env_keys_the_helper_to_the_host() {
+        let key_for = |host: &GitHubHost| {
+            let mut command = Command::new("git");
+            apply_probe_git_env(&mut command, host, "token");
+            command
+                .as_std()
+                .get_envs()
+                .find(|(name, _)| *name == "GIT_CONFIG_KEY_0")
+                .and_then(|(_, value)| value.map(|value| value.to_string_lossy().into_owned()))
+        };
+        assert_eq!(
+            key_for(&GitHubHost::default()).as_deref(),
+            Some("credential.https://github.com.helper")
+        );
+        assert_eq!(
+            key_for(&ghes()).as_deref(),
+            Some("credential.https://ghe.example.com.helper")
+        );
     }
 
     #[test]

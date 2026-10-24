@@ -1247,7 +1247,7 @@ async fn probe_github_repository(
     host: &fabro_types::GitHubHost,
 ) -> std::result::Result<(), String> {
     let url = slug.https_url(host);
-    probe_with_replication_retry(token.snapshot, || run_probe_ls_remote(&url, &token)).await
+    probe_with_replication_retry(token.snapshot, || run_probe_ls_remote(host, &url, &token)).await
 }
 
 /// Retry auth-shaped failures with the SAME token: replication of a given
@@ -1370,9 +1370,13 @@ where
     }
 }
 
-async fn run_probe_ls_remote(url: &str, token: &ResolvedToken) -> std::result::Result<(), String> {
+async fn run_probe_ls_remote(
+    host: &fabro_types::GitHubHost,
+    url: &str,
+    token: &ResolvedToken,
+) -> std::result::Result<(), String> {
     let mut command = Command::new("git");
-    fabro_github::apply_probe_git_env(&mut command, token.token.expose());
+    fabro_github::apply_probe_git_env(&mut command, host, token.token.expose());
     command.args(["ls-remote", url, "HEAD"]);
     run_ls_remote(command).await
 }

@@ -118,6 +118,8 @@ impl EnvVars {
     pub const ZAI_API_KEY: &'static str = "ZAI_API_KEY";
 
     // GitHub, OAuth, and Slack
+    pub const GH_ENTERPRISE_TOKEN: &'static str = "GH_ENTERPRISE_TOKEN";
+    pub const GH_HOST: &'static str = "GH_HOST";
     pub const GH_TOKEN: &'static str = "GH_TOKEN";
     pub const GITHUB_APP_CLIENT_SECRET: &'static str = "GITHUB_APP_CLIENT_SECRET";
     pub const GITHUB_APP_PRIVATE_KEY: &'static str = "GITHUB_APP_PRIVATE_KEY";
@@ -280,6 +282,8 @@ mod tests {
             EnvVars::OPENROUTER_API_KEY,
             EnvVars::POOLSIDE_API_KEY,
             EnvVars::ZAI_API_KEY,
+            EnvVars::GH_ENTERPRISE_TOKEN,
+            EnvVars::GH_HOST,
             EnvVars::GH_TOKEN,
             EnvVars::GITHUB_APP_CLIENT_SECRET,
             EnvVars::GITHUB_APP_PRIVATE_KEY,

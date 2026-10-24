@@ -510,7 +510,7 @@ async fn get_github_repo(
                 }
             };
             let installed =
-                match fabro_github::check_app_installed(&client, &jwt, &owner, &name, &base_url)
+                match fabro_github::check_app_installed(&client, &jwt, &owner, &name, base_url)
                     .await
                 {
                     Ok(installed) => installed,

@@ -499,7 +499,7 @@ impl InstallInputSource for InteractiveInstallInputSource {
         s: &Styles,
         _printer: Printer,
     ) -> Result<GitHubInstallSelection> {
-        let github_host = crate::user_config::github_host()?;
+        let github_host = user_config::github_host()?;
         let gh_available = GhCli::detect(&github_host).await.is_some();
 
         let token_label = if gh_available {
@@ -696,7 +696,7 @@ impl InstallInputSource for NonInteractiveInstallInputSource {
         _s: &Styles,
         _printer: Printer,
     ) -> Result<GitHubInstallSelection> {
-        let github_host = crate::user_config::github_host()?;
+        let github_host = user_config::github_host()?;
         match self.args.github_strategy {
             Some(InstallGitHubStrategyArg::Token) => {
                 let token = fabro_github::gh_auth_token(&github_host)
@@ -783,7 +783,7 @@ async fn choose_install_github_selection(
         return input.choose_github_install(s, printer).await;
     }
 
-    let github_host = crate::user_config::github_host()?;
+    let github_host = user_config::github_host()?;
     match github_args.strategy {
         Some(InstallGitHubStrategyArg::Token) => {
             let token = fabro_github::gh_auth_token(&github_host)
@@ -982,7 +982,7 @@ async fn setup_github_app(
     printer: Printer,
 ) -> Result<GitHubAppRegistration> {
     let app_name = owner.app_name(username);
-    let github_host = crate::user_config::github_host()?;
+    let github_host = user_config::github_host()?;
 
     // Bind to random port
     let listener = TcpListener::bind("127.0.0.1:0")

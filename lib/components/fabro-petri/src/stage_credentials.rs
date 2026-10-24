@@ -57,7 +57,7 @@ impl StageCredentials {
         let Some(RunTarget::Git(target)) = &spec.target else {
             return Ok(None);
         };
-        let repository = target.clone().validate()?.repository().clone();
+        let repository = target.clone().validate(host)?.repository().clone();
         let integration = spec
             .settings
             .run
@@ -65,7 +65,8 @@ impl StageCredentials {
             .github
             .resolve_integration()?;
         let Some(access) = GitHubRepositoryAccess::new(
-            Some(&repository.https_url()),
+            host,
+            Some(&repository.https_url(host)),
             &integration.additional_repositories,
             integration.permissions.clone(),
         )?

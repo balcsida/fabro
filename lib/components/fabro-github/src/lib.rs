@@ -54,13 +54,18 @@ pub fn apply_probe_git_env(command: &mut Command, token: &str) {
 
 /// Resolves the GitHub deployment from settings, letting `GITHUB_WEB_URL`
 /// override the web origin and `GITHUB_BASE_URL` override the REST API base.
+pub fn github_host(settings: &GithubIntegrationSettings) -> anyhow::Result<GitHubHost> {
+    with_env_overrides(&settings.host)
+}
+
+/// [`github_host`] for a caller that resolved only the configured host.
 #[expect(
     clippy::disallowed_methods,
     reason = "GitHub API client exposes documented process-env web origin and API base overrides."
 )]
-pub fn github_host(settings: &GithubIntegrationSettings) -> anyhow::Result<GitHubHost> {
+pub fn with_env_overrides(configured: &GitHubHost) -> anyhow::Result<GitHubHost> {
     host_with_overrides(
-        &settings.host,
+        configured,
         std::env::var(EnvVars::GITHUB_WEB_URL).ok().as_deref(),
         std::env::var(EnvVars::GITHUB_BASE_URL).ok().as_deref(),
     )
@@ -110,6 +115,12 @@ impl<'a> GitHubContext<'a> {
             host,
             http_client: Some(http_client),
         }
+    }
+
+    /// The GitHub deployment this context talks to.
+    #[must_use]
+    pub fn host(&self) -> &'a GitHubHost {
+        self.host
     }
 
     fn http_client(&self) -> anyhow::Result<fabro_http::HttpClient> {
@@ -442,14 +453,14 @@ impl HttpClient for fabro_http::HttpClient {
     }
 }
 
-/// Parse `owner` and `repo` from a GitHub HTTPS URL.
+/// Parse `owner` and `repo` from an HTTPS URL on `host`.
 ///
-/// Accepts URLs like:
+/// Accepts URLs like (shown for github.com):
 /// - `https://github.com/owner/repo.git`
 /// - `https://github.com/owner/repo`
 /// - `https://github.com/owner/repo/`
 /// - `https://x-access-token:TOKEN@github.com/owner/repo.git`
-pub fn parse_github_owner_repo(url: &str) -> anyhow::Result<(String, String)> {
+pub fn parse_github_owner_repo(host: &GitHubHost, url: &str) -> anyhow::Result<(String, String)> {
     // Strip credentials from URLs like https://x-access-token:TOKEN@github.com/...
     let stripped = url.strip_prefix("https://").and_then(|rest| {
         rest.split_once('@')
@@ -458,8 +469,15 @@ pub fn parse_github_owner_repo(url: &str) -> anyhow::Result<(String, String)> {
     let url = stripped.as_deref().unwrap_or(url);
     let display_url = redacted_url_for_error(url);
     let path = url
-        .strip_prefix("https://github.com/")
-        .ok_or_else(|| anyhow!("Not a GitHub HTTPS URL: {display_url}"))?;
+        .strip_prefix(host.web_url())
+        .and_then(|rest| rest.strip_prefix('/'))
+        .ok_or_else(|| {
+            if host.is_github_com() {
+                anyhow!("Not a GitHub HTTPS URL: {display_url}")
+            } else {
+                anyhow!("Not a GitHub HTTPS URL for {}: {display_url}", host.host())
+            }
+        })?;
 
     let path = path.trim_end_matches('/');
     let path = path.strip_suffix(".git").unwrap_or(path);
@@ -1445,7 +1463,7 @@ pub async fn resolve_authenticated_url(
     ctx: &GitHubContext<'_>,
     url: &str,
 ) -> anyhow::Result<DisplaySafeUrl> {
-    let (owner, repo) = parse_github_owner_repo(url)?;
+    let (owner, repo) = parse_github_owner_repo(ctx.host, url)?;
     let credentials = resolve_clone_credentials(ctx, &owner, &repo).await?;
     embed_token_in_url(url, credentials.password())
 }
@@ -1818,28 +1836,38 @@ mod tests {
 
     #[test]
     fn parse_https_with_git_suffix() {
-        let (owner, repo) = parse_github_owner_repo("https://github.com/owner/repo.git").unwrap();
+        let (owner, repo) =
+            parse_github_owner_repo(&GitHubHost::default(), "https://github.com/owner/repo.git")
+                .unwrap();
         assert_eq!(owner, "owner");
         assert_eq!(repo, "repo");
     }
 
     #[test]
     fn parse_https_without_git_suffix() {
-        let (owner, repo) = parse_github_owner_repo("https://github.com/owner/repo").unwrap();
+        let (owner, repo) =
+            parse_github_owner_repo(&GitHubHost::default(), "https://github.com/owner/repo")
+                .unwrap();
         assert_eq!(owner, "owner");
         assert_eq!(repo, "repo");
     }
 
     #[test]
     fn parse_https_with_trailing_slash() {
-        let (owner, repo) = parse_github_owner_repo("https://github.com/owner/repo/").unwrap();
+        let (owner, repo) =
+            parse_github_owner_repo(&GitHubHost::default(), "https://github.com/owner/repo/")
+                .unwrap();
         assert_eq!(owner, "owner");
         assert_eq!(repo, "repo");
     }
 
     #[test]
     fn parse_rejects_extra_path_components() {
-        let error = parse_github_owner_repo("https://github.com/owner/repo/issues").unwrap_err();
+        let error = parse_github_owner_repo(
+            &GitHubHost::default(),
+            "https://github.com/owner/repo/issues",
+        )
+        .unwrap_err();
 
         assert!(
             error.to_string().contains("must identify one repository"),
@@ -1900,8 +1928,75 @@ mod tests {
     }
 
     #[test]
+    fn parse_owner_repo_accepts_https_and_ssh_on_github_com() {
+        let host = GitHubHost::default();
+        for url in [
+            "https://github.com/acme/widgets",
+            "https://github.com/acme/widgets.git",
+            "git@github.com:acme/widgets.git",
+            "ssh://git@github.com/acme/widgets.git",
+        ] {
+            let normalized = normalize_repo_origin_url(url);
+            assert_eq!(
+                parse_github_owner_repo(&host, &normalized).unwrap(),
+                ("acme".to_string(), "widgets".to_string()),
+                "{url}"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_owner_repo_accepts_https_and_ssh_on_enterprise_hosts() {
+        for web_url in ["https://ghe.example.com", "https://octocorp.ghe.com"] {
+            let host = GitHubHost::new(web_url, None).unwrap();
+            let name = host.host();
+            for url in [
+                format!("{web_url}/acme/widgets"),
+                format!("{web_url}/acme/widgets.git"),
+                format!("https://x-access-token:ghs_abc@{name}/acme/widgets.git"),
+                format!("git@{name}:acme/widgets.git"),
+                format!("ssh://git@{name}/acme/widgets.git"),
+            ] {
+                let normalized = normalize_repo_origin_url(&url);
+                assert_eq!(
+                    parse_github_owner_repo(&host, &normalized).unwrap(),
+                    ("acme".to_string(), "widgets".to_string()),
+                    "{url}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn parse_owner_repo_rejects_foreign_hosts_naming_the_expected_one() {
+        let ghes = ghes();
+        let error = parse_github_owner_repo(&ghes, "https://github.com/acme/widgets").unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "Not a GitHub HTTPS URL for ghe.example.com: https://github.com/acme/widgets"
+        );
+        let error = parse_github_owner_repo(&ghes, "https://gitlab.com/acme/widgets").unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .starts_with("Not a GitHub HTTPS URL for ghe.example.com: "),
+            "{error}"
+        );
+        let error = parse_github_owner_repo(
+            &GitHubHost::default(),
+            "https://ghe.example.com/acme/widgets",
+        )
+        .unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "Not a GitHub HTTPS URL: https://ghe.example.com/acme/widgets"
+        );
+    }
+
+    #[test]
     fn parse_github_url_with_credentials() {
         let (owner, repo) = parse_github_owner_repo(
+            &GitHubHost::default(),
             "https://x-access-token:ghs_abc123@github.com/acme/widgets.git",
         )
         .unwrap();
@@ -1911,15 +2006,21 @@ mod tests {
 
     #[test]
     fn parse_github_url_with_credentials_no_password() {
-        let (owner, repo) =
-            parse_github_owner_repo("https://token@github.com/acme/widgets.git").unwrap();
+        let (owner, repo) = parse_github_owner_repo(
+            &GitHubHost::default(),
+            "https://token@github.com/acme/widgets.git",
+        )
+        .unwrap();
         assert_eq!(owner, "acme");
         assert_eq!(repo, "widgets");
     }
 
     #[test]
     fn parse_credentials_non_github_still_errors() {
-        let result = parse_github_owner_repo("https://user:pass@gitlab.com/owner/repo");
+        let result = parse_github_owner_repo(
+            &GitHubHost::default(),
+            "https://user:pass@gitlab.com/owner/repo",
+        );
         assert!(result.is_err());
         assert!(
             result
@@ -2003,7 +2104,8 @@ mod tests {
 
     #[test]
     fn parse_non_github_url_errors() {
-        let result = parse_github_owner_repo("https://gitlab.com/owner/repo");
+        let result =
+            parse_github_owner_repo(&GitHubHost::default(), "https://gitlab.com/owner/repo");
         assert!(result.is_err());
         assert!(
             result
@@ -2015,14 +2117,14 @@ mod tests {
 
     #[test]
     fn parse_missing_repo_errors() {
-        let result = parse_github_owner_repo("https://github.com/owner");
+        let result = parse_github_owner_repo(&GitHubHost::default(), "https://github.com/owner");
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Missing repo"));
     }
 
     #[test]
     fn parse_empty_string_errors() {
-        let result = parse_github_owner_repo("");
+        let result = parse_github_owner_repo(&GitHubHost::default(), "");
         assert!(result.is_err());
     }
 
@@ -2141,6 +2243,7 @@ mod tests {
     #[tokio::test]
     async fn multi_repository_mint_lists_every_repository_name_once() {
         let access = GitHubRepositoryAccess::new(
+            &GitHubHost::default(),
             Some("git@github.com:owner/repo.git"),
             &[
                 "owner/keystone".parse().unwrap(),

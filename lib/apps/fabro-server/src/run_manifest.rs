@@ -442,7 +442,7 @@ async fn build_preflight_report(
     check: &ManifestCheck,
     shape: &WorkflowShape,
 ) -> Result<(CheckReport, bool)> {
-    let mut checks = base_preflight_checks(prepared, shape);
+    let mut checks = base_preflight_checks(prepared, shape, &state.github_host);
     if check.has_errors() {
         return Ok((
             CheckReport {
@@ -539,12 +539,16 @@ async fn build_preflight_report(
     ))
 }
 
-fn base_preflight_checks(prepared: &PreparedManifest, shape: &WorkflowShape) -> Vec<CheckResult> {
+fn base_preflight_checks(
+    prepared: &PreparedManifest,
+    shape: &WorkflowShape,
+    host: &fabro_types::GitHubHost,
+) -> Vec<CheckResult> {
     let repo_summary = prepared.git.as_ref().map_or_else(
         || "unknown".to_string(),
         |git| {
             let https = fabro_github::ssh_url_to_https(&git.origin_url);
-            fabro_github::parse_github_owner_repo(&https).map_or_else(
+            fabro_github::parse_github_owner_repo(host, &https).map_or_else(
                 |_| git.origin_url.clone(),
                 |(owner, repo)| format!("{owner}/{repo}"),
             )
@@ -714,6 +718,7 @@ async fn run_repository_access_check(
         prepared,
         resolved_run,
         github_app,
+        host,
         |request, github_app| check_git_remote_ref(request, github_app, host),
     )
     .await
@@ -725,6 +730,7 @@ async fn run_repository_access_check_with<F, Fut>(
     prepared: &PreparedManifest,
     resolved_run: &RunNamespace,
     github_app: Option<fabro_github::GitHubCredentials>,
+    host: &fabro_types::GitHubHost,
     check_remote_ref: F,
 ) -> bool
 where
@@ -742,7 +748,7 @@ where
     };
 
     let origin_url = fabro_github::normalize_repo_origin_url(&git.origin_url);
-    if let Err(err) = fabro_github::parse_github_owner_repo(&origin_url) {
+    if let Err(err) = fabro_github::parse_github_owner_repo(host, &origin_url) {
         checks.push(CheckResult {
             name:        "Repository Access".into(),
             status:      CheckStatus::Error,
@@ -958,7 +964,7 @@ async fn run_github_token_check(
         github_app,
         host,
         |access, creds| mint_scoped_github_token(access, creds, host),
-        probe_github_repository,
+        |slug, token| probe_github_repository(slug, token, host),
     )
     .await
 }
@@ -1063,6 +1069,7 @@ where
     // The same validated access value runtime initialization constructs, so
     // preflight and runtime cannot disagree about the effective set.
     let access = match fabro_github::GitHubRepositoryAccess::new(
+        host,
         Some(origin_url),
         &integration.additional_repositories,
         integration.permissions.clone(),
@@ -1237,8 +1244,9 @@ async fn mint_scoped_github_token(
 async fn probe_github_repository(
     slug: fabro_types::GitHubRepositorySlug,
     token: ResolvedToken,
+    host: &fabro_types::GitHubHost,
 ) -> std::result::Result<(), String> {
-    let url = slug.https_url();
+    let url = slug.https_url(host);
     probe_with_replication_retry(token.snapshot, || run_probe_ls_remote(&url, &token)).await
 }
 
@@ -1376,7 +1384,7 @@ async fn mint_github_token(
     permissions: &HashMap<String, String>,
 ) -> Result<String> {
     let https_url = fabro_github::ssh_url_to_https(origin_url);
-    let (owner, repo) = fabro_github::parse_github_owner_repo(&https_url)?;
+    let (owner, repo) = fabro_github::parse_github_owner_repo(host, &https_url)?;
     let client = fabro_http::http_client()?;
     let perms_json = serde_json::to_value(permissions)?;
     creds
@@ -1899,6 +1907,7 @@ provider = "local"
             &prepared,
             &resolved,
             None,
+            &fabro_types::GitHubHost::default(),
             move |request, _github_app| {
                 calls_for_check.lock().unwrap().push(request);
                 async { Ok(()) }
@@ -1928,6 +1937,7 @@ provider = "local"
             &prepared,
             &resolved,
             None,
+            &fabro_types::GitHubHost::default(),
             move |request, _github_app| {
                 calls_for_check.lock().unwrap().push(request);
                 async { Ok(()) }
@@ -1969,6 +1979,7 @@ provider = "local"
             &prepared,
             &resolved,
             None,
+            &fabro_types::GitHubHost::default(),
             move |request, _github_app| {
                 calls_for_check.lock().unwrap().push(request);
                 async { Ok(()) }
@@ -2001,6 +2012,7 @@ provider = "local"
             &prepared,
             &resolved,
             None,
+            &fabro_types::GitHubHost::default(),
             |_request, _github_app| async { Err("remote branch not found".to_string()) },
         )
         .await;

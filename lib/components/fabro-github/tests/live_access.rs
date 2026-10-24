@@ -34,7 +34,7 @@ fn env_var(name: &str) -> String {
 }
 
 async fn ls_remote_with_token(slug: &GitHubRepositorySlug, token: &str) -> bool {
-    let url = slug.https_url();
+    let url = slug.https_url(&GitHubHost::default());
     let mut command = Command::new("git");
     fabro_github::apply_probe_git_env(&mut command, token);
     let output = command
@@ -65,6 +65,7 @@ async fn scoped_token_reaches_the_declared_additional_repository() {
     let additional_set: BTreeSet<GitHubRepositorySlug> = [additional.clone()].into_iter().collect();
 
     let access = GitHubRepositoryAccess::new(
+        &GitHubHost::default(),
         Some(&origin),
         &additional_set,
         std::collections::HashMap::from([("contents".to_string(), "read".to_string())]),
@@ -102,6 +103,7 @@ async fn scoped_token_reaches_the_declared_additional_repository() {
     // read the additional repository (proves server-side scoping, not just
     // possession of a token).
     let primary_only = GitHubRepositoryAccess::new(
+        &GitHubHost::default(),
         Some(&origin),
         &BTreeSet::new(),
         std::collections::HashMap::from([("contents".to_string(), "read".to_string())]),

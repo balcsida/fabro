@@ -269,7 +269,7 @@ impl InstallationTokenSource {
         permissions: serde_json::Value,
     ) -> anyhow::Result<Arc<Self>> {
         let normalized = crate::normalize_repo_origin_url(origin_url);
-        let (owner, repo) = crate::parse_github_owner_repo(&normalized)
+        let (owner, repo) = crate::parse_github_owner_repo(host, &normalized)
             .context("parsing GitHub origin for token source")?;
         Self::for_repository(creds, host, owner, repo, permissions)
     }
@@ -580,6 +580,7 @@ mod tests {
     #[tokio::test]
     async fn for_access_source_resolves_like_the_single_repository_source() {
         let access = crate::GitHubRepositoryAccess::new(
+            &GitHubHost::default(),
             Some("https://github.com/owner/repo.git"),
             &["owner/keystone".parse().unwrap()].into_iter().collect(),
             std::collections::HashMap::from([("contents".to_string(), "read".to_string())]),

@@ -2574,7 +2574,17 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
     // Petri's records live on the shared pool; the view tables live where the
     // run summary store keeps the `runs` row (the same database in the
     // server, a fixture of its own in a test).
-    let petri_projector = Projector::new(db_pool.clone(), store.run_summary_store().pool());
+    let github_host = match github_host {
+        Some(host) => host,
+        None => fabro_github::github_host(
+            &resolved_settings.server_settings.server.integrations.github,
+        )?,
+    };
+    let petri_projector = Projector::with_github_host(
+        db_pool.clone(),
+        store.run_summary_store().pool(),
+        github_host.clone(),
+    );
     {
         let projector = Arc::clone(&petri_projector);
         store.set_platform_record_hook(Arc::new(move |run_id| projector.signal(run_id)));
@@ -2643,10 +2653,6 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         }
     };
     let worker_tokens = worker_token_keys_from_server_secrets(&server_secrets)?;
-    let github_host = match github_host {
-        Some(host) => host,
-        None => fabro_github::github_host(&current_server_settings.server.integrations.github)?,
-    };
     let storage_root = PathBuf::from(&current_server_settings.server.storage.root);
     let automation_repo_cache = Arc::new(GitRepoCache::new(
         Storage::new(&storage_root)

@@ -381,7 +381,7 @@ fn resolve_integrations(
     }
 }
 
-fn resolve_github_host(
+pub(crate) fn resolve_github_host(
     layer: &GithubIntegrationLayer,
     errors: &mut Vec<ResolveError>,
 ) -> GitHubHost {

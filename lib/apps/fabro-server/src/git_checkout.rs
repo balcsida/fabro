@@ -264,8 +264,11 @@ async fn bare_clone_may_be_corrupt(bare_dir: &Path) -> bool {
     }
 }
 
-pub(crate) fn github_clone_url(repo: &GitHubRepositorySlug) -> String {
-    let mut url = repo.https_url();
+pub(crate) fn github_clone_url(
+    repo: &GitHubRepositorySlug,
+    host: &fabro_types::GitHubHost,
+) -> String {
+    let mut url = repo.https_url(host);
     url.push_str(".git");
     url
 }
@@ -740,11 +743,14 @@ mod tests {
         assert_eq!(repo.owner(), "fabro-sh");
         assert_eq!(repo.repo(), "fabro");
         assert_eq!(
-            github_clone_url(&repo),
+            github_clone_url(&repo, &fabro_types::GitHubHost::default()),
             "https://github.com/fabro-sh/fabro.git"
         );
-        assert_eq!(repo.https_url(), "https://github.com/fabro-sh/fabro");
-        assert!(!github_clone_url(&repo).contains('@'));
+        assert_eq!(
+            repo.https_url(&fabro_types::GitHubHost::default()),
+            "https://github.com/fabro-sh/fabro"
+        );
+        assert!(!github_clone_url(&repo, &fabro_types::GitHubHost::default()).contains('@'));
     }
 
     #[test]
@@ -753,13 +759,16 @@ mod tests {
 
         assert_eq!(repo.owner(), "owner");
         assert_eq!(repo.repo(), ".github");
-        assert_eq!(repo.https_url(), "https://github.com/owner/.github");
+        assert_eq!(
+            repo.https_url(&fabro_types::GitHubHost::default()),
+            "https://github.com/owner/.github"
+        );
     }
 
     #[test]
     fn bare_cache_command_plans_use_argv_prompt_disable_and_timeouts() {
         let repo = repository_slug("fabro-sh/fabro");
-        let clone_url = github_clone_url(&repo);
+        let clone_url = github_clone_url(&repo, &fabro_types::GitHubHost::default());
         let temp = TempDir::new().unwrap();
         let bare_dir = temp.path().join("fabro-sh/fabro.git");
         let worktree_dir = temp.path().join("worktree/repo");
@@ -847,7 +856,7 @@ mod tests {
     #[test]
     fn credential_config_env_keeps_clone_url_uncredentialed() {
         let repo = repository_slug("fabro-sh/fabro");
-        let clone_url = github_clone_url(&repo);
+        let clone_url = github_clone_url(&repo, &fabro_types::GitHubHost::default());
         let auth = GitAuthConfig::from_parts("x-access-token", "ghu_secret");
         let plan = build_bare_clone_plan(&clone_url, Path::new("/tmp/fabro-checkout"), Some(&auth));
 

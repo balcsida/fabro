@@ -128,6 +128,7 @@ pub(crate) struct ProductionAutomationRunMaterializer {
     remote_resolver: Arc<dyn AutomationGitRemoteResolver>,
     repo_cache:      Arc<GitRepoCache>,
     version_store:   WorkflowVersionStore,
+    host:            fabro_types::GitHubHost,
 }
 
 /// Where to fetch a repository from and how to authenticate.
@@ -159,7 +160,7 @@ impl AutomationGitRemoteResolver for ServerGitHubRemoteResolver {
         )
         .await?;
         Ok(GitRemote {
-            clone_url: git_checkout::github_clone_url(repo),
+            clone_url: git_checkout::github_clone_url(repo, &self.host),
             auth,
         })
     }
@@ -176,11 +177,12 @@ impl ProductionAutomationRunMaterializer {
         Self {
             remote_resolver: Arc::new(ServerGitHubRemoteResolver {
                 credentials: github_credentials,
-                host: github_host,
+                host: github_host.clone(),
                 http_client,
             }),
             repo_cache,
             version_store,
+            host: github_host,
         }
     }
 
@@ -232,13 +234,13 @@ impl AutomationRunMaterializer for ProductionAutomationRunMaterializer {
     ) -> Result<AutomationRunMaterialized, RunMaterializeError> {
         let validated_target = input
             .target
-            .validate()
+            .validate(&self.host)
             .map_err(|source| RunMaterializeError::InvalidTarget { source })?;
         let target_repo = validated_target.repository().clone();
         let mut exact_target = validated_target.into_target();
         let workflow_source = input
             .workflow_source
-            .map(GitRunTarget::validate)
+            .map(|source| source.validate(&self.host))
             .transpose()
             .map_err(|source| RunMaterializeError::InvalidWorkflowSource { source })?;
         // A workflow source naming the target's exact coordinate shares its

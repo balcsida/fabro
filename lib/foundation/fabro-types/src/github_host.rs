@@ -150,6 +150,21 @@ impl GitHubHost {
             .map_or(self.web_url.as_str(), |(_, authority)| authority)
     }
 
+    /// The host name of the web origin, without any port.
+    #[must_use]
+    pub fn hostname(&self) -> &str {
+        let authority = self.host();
+        authority
+            .rsplit_once(':')
+            .map_or(authority, |(name, port)| {
+                if port.bytes().all(|byte| byte.is_ascii_digit()) {
+                    name
+                } else {
+                    authority
+                }
+            })
+    }
+
     #[must_use]
     pub fn is_github_com(&self) -> bool {
         self.host() == "github.com"
@@ -296,6 +311,7 @@ mod tests {
         let ghes = host("https://GHE.Example.com:8443");
         assert_eq!(ghes.web_url(), "https://ghe.example.com:8443");
         assert_eq!(ghes.host(), "ghe.example.com:8443");
+        assert_eq!(ghes.hostname(), "ghe.example.com");
     }
 
     #[test]

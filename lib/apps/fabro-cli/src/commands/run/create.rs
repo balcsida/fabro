@@ -104,7 +104,10 @@ pub(crate) async fn create_run(
                 && args.target_repo.is_none()
                 && args.target_repo_selector.is_none() =>
         {
-            fabro_manifest::configured_repo_origin_url_for_location(package.workflow_location())?
+            fabro_manifest::configured_repo_origin_url_for_location(
+                &crate::user_config::github_host()?,
+                package.workflow_location(),
+            )?
         }
         _ => None,
     };

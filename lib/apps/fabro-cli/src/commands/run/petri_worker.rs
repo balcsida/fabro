@@ -221,7 +221,7 @@ pub(super) async fn execute(worker: PetriWorker<'_>) -> Result<()> {
             None
         }
     };
-    let github_host = publish::github_host()?;
+    let github_host = crate::user_config::github_host()?;
     let read_tokens =
         publish::read_token_source(&worker.run_state.spec, github.as_ref(), &github_host);
     runtime.stage_credentials = StageCredentials::for_run(
@@ -231,6 +231,7 @@ pub(super) async fn execute(worker: PetriWorker<'_>) -> Result<()> {
         read_tokens.clone(),
     )?;
     let mut source = RunSource::for_run(
+        &github_host,
         worker.run_state.spec.target.as_ref(),
         &worker.run_state.spec.settings.run,
         None,

@@ -465,9 +465,10 @@ async fn reconcile_existing_pull_request(
     .await;
     Ok(Some(CreatedPullRequest {
         link:        PullRequestLink {
-            owner:  owner.to_string(),
-            repo:   repo.to_string(),
-            number: existing.number,
+            owner:    owner.to_string(),
+            repo:     repo.to_string(),
+            number:   existing.number,
+            html_url: existing.html_url.clone(),
         },
         title:       existing.title,
         base_branch: req.base_branch.to_string(),
@@ -553,8 +554,8 @@ pub async fn open_pull_request(
     req: OpenPullRequestRequest<'_>,
 ) -> Result<CreatedPullRequest, String> {
     let https_url = ssh_url_to_https(req.origin_url);
-    let (owner, repo) =
-        github_app::parse_github_owner_repo(&https_url).map_err(|err| format!("{err:#}"))?;
+    let (owner, repo) = github_app::parse_github_owner_repo(req.github.host(), &https_url)
+        .map_err(|err| format!("{err:#}"))?;
 
     // Verify before generating content: this is the cheap check, and a stale
     // branch would otherwise cost a full LLM call before failing.
@@ -625,6 +626,7 @@ pub async fn open_pull_request(
         owner,
         repo,
         number: created.number,
+        html_url: created.html_url.clone(),
     };
 
     Ok(CreatedPullRequest {
@@ -1273,7 +1275,7 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
         let harness = setup_fallback_test_harness_with_branch_sha(&payload, "stale-sha").await;
         let github_base_url = harness.github_server.url("");
         let github_host =
-            fabro_github::GitHubHost::new(&github_base_url, Some(&github_base_url)).unwrap();
+            fabro_github::GitHubHost::new("https://github.com", Some(&github_base_url)).unwrap();
         let error = open_pull_request(OpenPullRequestRequest {
             run_id:            RunId::new(),
             github:            fabro_github::GitHubContext::new(&harness.creds, &github_host),
@@ -1556,7 +1558,7 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
 
         let github_base_url = harness.github_server.url("");
         let github_host =
-            fabro_github::GitHubHost::new(&github_base_url, Some(&github_base_url)).unwrap();
+            fabro_github::GitHubHost::new("https://github.com", Some(&github_base_url)).unwrap();
         let github = github_app::GitHubContext::new(&harness.creds, &github_host);
 
         let result = open_pull_request(OpenPullRequestRequest {
@@ -1606,7 +1608,7 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
 
         let github_base_url = harness.github_server.url("");
         let github_host =
-            fabro_github::GitHubHost::new(&github_base_url, Some(&github_base_url)).unwrap();
+            fabro_github::GitHubHost::new("https://github.com", Some(&github_base_url)).unwrap();
         let github = github_app::GitHubContext::new(&harness.creds, &github_host);
 
         let result = open_pull_request(OpenPullRequestRequest {
@@ -1642,7 +1644,7 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
 
         let github_base_url = harness.github_server.url("");
         let github_host =
-            fabro_github::GitHubHost::new(&github_base_url, Some(&github_base_url)).unwrap();
+            fabro_github::GitHubHost::new("https://github.com", Some(&github_base_url)).unwrap();
         let github = github_app::GitHubContext::new(&harness.creds, &github_host);
 
         // Single ~200-char line, no `Plan:` / heading prefix, no newlines.

@@ -39,6 +39,7 @@ pub(crate) async fn run(
         cwd: ctx.cwd().to_path_buf(),
         environment_defaults: fabro_environment::seeded_catalog_layer(),
         user_settings_path: Some(active_settings_path(None)),
+        github_host: crate::user_config::github_host()?,
         ..Default::default()
     })?;
     let client = ctx.server().await?;

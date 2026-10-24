@@ -52,12 +52,6 @@ const PUSH_TIMEOUT: Duration = Duration::from_mins(5);
 const PUSH_ATTEMPTS: u32 = 3;
 const PUSH_RETRY_DELAY: Duration = Duration::from_secs(2);
 
-/// The GitHub deployment the server is configured for.
-pub(super) fn github_host() -> Result<GitHubHost> {
-    let settings = ServerSettingsBuilder::load_default().context("loading the server settings")?;
-    fabro_github::github_host(&settings.server.integrations.github)
-}
-
 /// The server's GitHub credentials as the worker reaches them, or `None`
 /// when none are configured.
 pub(super) fn github_credentials(vault: &Vault) -> Result<Option<GitHubCredentials>> {
@@ -83,11 +77,11 @@ pub(super) fn github_credentials(vault: &Vault) -> Result<Option<GitHubCredentia
 }
 
 /// The run's GitHub repository, when its target names one.
-fn repository(spec: &RunSpec) -> Option<GitHubRepositorySlug> {
+fn repository(spec: &RunSpec, host: &GitHubHost) -> Option<GitHubRepositorySlug> {
     let Some(RunTarget::Git(target)) = spec.target.as_ref() else {
         return None;
     };
-    Some(target.clone().validate().ok()?.repository().clone())
+    Some(target.clone().validate(host).ok()?.repository().clone())
 }
 
 /// A cached token source for the run's repository with `permissions`, or
@@ -98,7 +92,7 @@ fn token_source(
     host: &GitHubHost,
     permissions: serde_json::Value,
 ) -> Option<Arc<InstallationTokenSource>> {
-    let repository = repository(spec)?;
+    let repository = repository(spec, host)?;
     let credentials = credentials?;
     match InstallationTokenSource::for_repository(
         credentials,
@@ -208,7 +202,7 @@ impl GitHubPublisher {
         let Some(RunTarget::Git(target)) = spec.target.as_ref() else {
             return None;
         };
-        let repository = repository(spec)?;
+        let repository = repository(spec, &host)?;
         let push_tokens = token_source(
             spec,
             credentials.as_ref(),
@@ -261,7 +255,7 @@ impl GitHubPublisher {
             .ok_or_else(|| "no LLM model is available to write the pull request".to_string())?;
         // The run so far, for the pull request's details: best effort.
         let run_state = self.client.get_run_state(&self.run_id).await.ok();
-        let origin_url = self.repository.https_url();
+        let origin_url = self.repository.https_url(&self.host);
         let created = pull_request::open_pull_request(OpenPullRequestRequest {
             run_id:            self.run_id,
             github:            context,
@@ -311,7 +305,15 @@ impl RunPublisher for GitHubPublisher {
             .resolve()
             .await
             .map_err(|err| format!("no push credential for {}: {err:#}", self.repository))?;
-        push(&self.repository, &resolved.token, site, branch, sha).await
+        push(
+            &self.repository,
+            &self.host,
+            &resolved.token,
+            site,
+            branch,
+            sha,
+        )
+        .await
     }
 
     async fn publish(&self, publication: &Publication) -> Result<(), String> {
@@ -342,12 +344,13 @@ impl RunPublisher for GitHubPublisher {
 /// repository alone and never appears in the error.
 async fn push(
     repository: &GitHubRepositorySlug,
+    host: &GitHubHost,
     token: &SecretString,
     site: &Site,
     branch: &str,
     sha: &str,
 ) -> Result<(), String> {
-    let mut url = repository.https_url();
+    let mut url = repository.https_url(host);
     url.push_str(".git");
     let credential = basic(token);
     let env = credential

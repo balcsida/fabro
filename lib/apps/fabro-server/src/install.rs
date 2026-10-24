@@ -796,6 +796,7 @@ async fn get_install_session(
         "prefill": {
             "canonical_url": detect_canonical_url(&headers),
             "object_store_local_root": default_local_object_store_root(&state),
+            "github_web_url": state.github_host.web_url(),
         }
     }))
     .into_response()

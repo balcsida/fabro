@@ -4,9 +4,10 @@ use base64::engine::general_purpose::STANDARD;
 use chrono::{DateTime, Utc};
 use fabro_redact::DisplaySafeUrl;
 use fabro_static::EnvVars;
+pub use fabro_types::GitHubHost;
+use fabro_types::PullRequestGithubDetail;
 use fabro_types::settings::run::MergeStrategy;
 use fabro_types::settings::server::GithubIntegrationSettings;
-use fabro_types::{GitHubHost, PullRequestGithubDetail};
 use serde::Deserialize;
 use tokio::process::Command;
 
@@ -51,17 +52,6 @@ pub fn apply_probe_git_env(command: &mut Command, token: &str) {
         .env("GIT_CONFIG_VALUE_0", GITHUB_CREDENTIAL_HELPER);
 }
 
-/// REST API base from `GITHUB_BASE_URL` or github.com, for call sites that
-/// have no settings to resolve a [`GitHubHost`] from.
-#[expect(
-    clippy::disallowed_methods,
-    reason = "GitHub API client exposes a documented process-env base URL override."
-)]
-pub fn github_api_base_url() -> String {
-    std::env::var(EnvVars::GITHUB_BASE_URL)
-        .unwrap_or_else(|_| GitHubHost::default().api_url().to_string())
-}
-
 /// Resolves the GitHub deployment from settings, letting `GITHUB_WEB_URL`
 /// override the web origin and `GITHUB_BASE_URL` override the REST API base.
 #[expect(
@@ -91,33 +81,33 @@ fn host_with_overrides(
     host.context("invalid GITHUB_WEB_URL or GITHUB_BASE_URL override")
 }
 
-/// Bundle of GitHub credentials and the API base URL, threaded through every
+/// Bundle of GitHub credentials and the GitHub host, threaded through every
 /// authenticated GitHub call. Lets call sites pass one parameter instead of
 /// two, and keeps the auth/endpoint pair from drifting apart.
 #[derive(Debug, Clone)]
 pub struct GitHubContext<'a> {
     creds:       &'a GitHubCredentials,
-    base_url:    &'a str,
+    host:        &'a GitHubHost,
     http_client: Option<fabro_http::HttpClient>,
 }
 
 impl<'a> GitHubContext<'a> {
-    pub fn new(creds: &'a GitHubCredentials, base_url: &'a str) -> Self {
+    pub fn new(creds: &'a GitHubCredentials, host: &'a GitHubHost) -> Self {
         Self {
             creds,
-            base_url,
+            host,
             http_client: None,
         }
     }
 
     pub fn with_http_client(
         creds: &'a GitHubCredentials,
-        base_url: &'a str,
+        host: &'a GitHubHost,
         http_client: fabro_http::HttpClient,
     ) -> Self {
         Self {
             creds,
-            base_url,
+            host,
             http_client: Some(http_client),
         }
     }
@@ -202,9 +192,12 @@ impl GitHubAppCredentials {
         }))
     }
 
-    pub fn installation_url(&self, owner: &str) -> Option<String> {
+    pub fn installation_url(&self, host: &GitHubHost, owner: &str) -> Option<String> {
         self.slug.as_ref().map(|slug| {
-            format!("https://github.com/organizations/{owner}/settings/apps/{slug}/installations")
+            format!(
+                "{}/organizations/{owner}/settings/apps/{slug}/installations",
+                host.web_url()
+            )
         })
     }
 
@@ -213,7 +206,7 @@ impl GitHubAppCredentials {
         client: &impl HttpClient,
         owner: &str,
         repo: &str,
-        base_url: &str,
+        host: &GitHubHost,
         permissions: serde_json::Value,
         install_url: Option<&str>,
     ) -> anyhow::Result<InstallationToken> {
@@ -221,7 +214,7 @@ impl GitHubAppCredentials {
             client,
             owner,
             &[repo.to_string()],
-            base_url,
+            host,
             permissions,
             install_url,
         )
@@ -236,19 +229,19 @@ impl GitHubAppCredentials {
         client: &impl HttpClient,
         owner: &str,
         repository_names: &[String],
-        base_url: &str,
+        host: &GitHubHost,
         permissions: serde_json::Value,
         install_url: Option<&str>,
     ) -> anyhow::Result<InstallationToken> {
         let jwt = sign_app_jwt(&self.app_id, &self.private_key_pem)?;
-        let default_install_url = self.installation_url(owner);
+        let default_install_url = self.installation_url(host, owner);
         let install_url = install_url.or(default_install_url.as_deref());
         mint_installation_token_with_jwt(
             client,
             &jwt,
             owner,
             repository_names,
-            base_url,
+            host,
             permissions,
             install_url,
         )
@@ -309,18 +302,18 @@ impl GitHubCredentials {
         client: &impl HttpClient,
         owner: &str,
         repo: &str,
-        base_url: &str,
+        host: &GitHubHost,
         permissions: serde_json::Value,
     ) -> anyhow::Result<String> {
         match self {
             Self::App(creds) => {
-                let install_url = creds.installation_url(owner);
+                let install_url = creds.installation_url(host, owner);
                 creds
                     .mint_installation_token(
                         client,
                         owner,
                         repo,
-                        base_url,
+                        host,
                         permissions,
                         install_url.as_deref(),
                     )
@@ -343,9 +336,9 @@ pub fn validate_static_github_token(token: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub async fn gh_auth_token() -> anyhow::Result<String> {
+pub async fn gh_auth_token(host: &GitHubHost) -> anyhow::Result<String> {
     let output = Command::new("gh")
-        .args(["auth", "token"])
+        .args(["auth", "token", "--hostname", host.host()])
         .output()
         .await
         .context("Failed to run `gh auth token`")?;
@@ -539,7 +532,7 @@ pub async fn create_installation_access_token_with_permissions(
     jwt: &str,
     owner: &str,
     repo: &str,
-    base_url: &str,
+    host: &GitHubHost,
     permissions: serde_json::Value,
 ) -> anyhow::Result<String> {
     create_installation_access_token_with_permissions_and_install_url(
@@ -547,7 +540,7 @@ pub async fn create_installation_access_token_with_permissions(
         jwt,
         owner,
         repo,
-        base_url,
+        host,
         permissions,
         None,
     )
@@ -559,7 +552,7 @@ pub async fn create_installation_access_token_with_permissions_and_install_url(
     jwt: &str,
     owner: &str,
     repo: &str,
-    base_url: &str,
+    host: &GitHubHost,
     permissions: serde_json::Value,
     install_url: Option<&str>,
 ) -> anyhow::Result<String> {
@@ -568,7 +561,7 @@ pub async fn create_installation_access_token_with_permissions_and_install_url(
         jwt,
         owner,
         &[repo.to_string()],
-        base_url,
+        host,
         permissions,
         install_url,
     )
@@ -627,10 +620,11 @@ async fn mint_installation_token_with_jwt(
     jwt: &str,
     owner: &str,
     repos: &[String],
-    base_url: &str,
+    host: &GitHubHost,
     permissions: serde_json::Value,
     install_url: Option<&str>,
 ) -> anyhow::Result<InstallationToken> {
+    let base_url = host.api_url();
     let Some(primary_repo) = repos.first() else {
         bail!("installation token mint requires at least one repository");
     };
@@ -646,7 +640,12 @@ async fn mint_installation_token_with_jwt(
         InstallationLookup::Found(id) => id,
         InstallationLookup::NotFound => {
             let install_url = install_url.map_or_else(
-                || format!("https://github.com/organizations/{owner}/settings/installations"),
+                || {
+                    format!(
+                        "{}/organizations/{owner}/settings/installations",
+                        host.web_url()
+                    )
+                },
                 str::to_string,
             );
             bail!(
@@ -754,14 +753,14 @@ pub async fn create_installation_access_token(
     jwt: &str,
     owner: &str,
     repo: &str,
-    base_url: &str,
+    host: &GitHubHost,
 ) -> anyhow::Result<String> {
     create_installation_access_token_with_permissions(
         client,
         jwt,
         owner,
         repo,
-        base_url,
+        host,
         serde_json::json!({ "contents": "write" }),
     )
     .await
@@ -774,14 +773,14 @@ pub async fn create_installation_access_token_for_pr(
     jwt: &str,
     owner: &str,
     repo: &str,
-    base_url: &str,
+    host: &GitHubHost,
 ) -> anyhow::Result<String> {
     create_installation_access_token_with_permissions(
         client,
         jwt,
         owner,
         repo,
-        base_url,
+        host,
         serde_json::json!({ "contents": "write", "pull_requests": "write" }),
     )
     .await
@@ -846,12 +845,15 @@ pub async fn find_open_pull_request_with_client(
             client,
             owner,
             repo,
-            ctx.base_url,
+            ctx.host,
             serde_json::json!({ "contents": "write", "pull_requests": "write" }),
         )
         .await?;
-    let mut url = DisplaySafeUrl::parse(&format!("{}/repos/{owner}/{repo}/pulls", ctx.base_url))
-        .context("Failed to build pull request reconciliation URL")?;
+    let mut url = DisplaySafeUrl::parse(&format!(
+        "{}/repos/{owner}/{repo}/pulls",
+        ctx.host.api_url()
+    ))
+    .context("Failed to build pull request reconciliation URL")?;
     url.query_pairs_mut()
         .append_pair("state", "open")
         .append_pair("base", base)
@@ -938,7 +940,7 @@ pub async fn create_pull_request_with_client(
             client,
             owner,
             repo,
-            ctx.base_url,
+            ctx.host,
             serde_json::json!({ "contents": "write", "pull_requests": "write" }),
         )
         .await?;
@@ -953,7 +955,7 @@ pub async fn create_pull_request_with_client(
         "draft": draft,
     });
 
-    let url = format!("{}/repos/{owner}/{repo}/pulls", ctx.base_url);
+    let url = format!("{}/repos/{owner}/{repo}/pulls", ctx.host.api_url());
     let auth = format!("Bearer {token}");
     let resp = HttpClient::request(
         client,
@@ -1034,7 +1036,7 @@ pub async fn enable_auto_merge_with_client(
             client,
             owner,
             repo,
-            ctx.base_url,
+            ctx.host,
             serde_json::json!({ "contents": "write", "pull_requests": "write" }),
         )
         .await?;
@@ -1059,7 +1061,7 @@ pub async fn enable_auto_merge_with_client(
         "Enabling auto-merge"
     );
 
-    let graphql_url = format!("{}/graphql", ctx.base_url);
+    let graphql_url = ctx.host.graphql_url();
     let auth = format!("Bearer {token}");
     let graphql_body = serde_json::json!({ "query": query });
     let resp = HttpClient::request(
@@ -1177,12 +1179,15 @@ async fn branch_head_sha_with_client(
             client,
             owner,
             repo,
-            ctx.base_url,
+            ctx.host,
             serde_json::json!({ "contents": "read" }),
         )
         .await?;
 
-    let url = format!("{}/repos/{owner}/{repo}/branches/{branch}", ctx.base_url);
+    let url = format!(
+        "{}/repos/{owner}/{repo}/branches/{branch}",
+        ctx.host.api_url()
+    );
     let auth = format!("Bearer {token}");
     let resp = client
         .request(HttpMethod::Get, &url, &github_headers(&auth), None)
@@ -1269,13 +1274,14 @@ pub async fn get_authenticated_app(
 ///
 /// Signs an App JWT and sets the webhook endpoint and content type.
 pub async fn update_app_webhook_config(
+    host: &GitHubHost,
     app_id: &str,
     private_key_pem: &str,
     webhook_url: &str,
 ) -> anyhow::Result<()> {
     let jwt = sign_app_jwt(app_id, private_key_pem)?;
     let client = http_client()?;
-    let url = format!("{}/app/hook/config", github_api_base_url());
+    let url = format!("{}/app/hook/config", host.api_url());
     let auth = format!("Bearer {jwt}");
     let body = serde_json::json!({
         "url": webhook_url,
@@ -1411,7 +1417,7 @@ async fn mint_git_token(
     permissions: serde_json::Value,
 ) -> anyhow::Result<String> {
     ctx.creds
-        .resolve_bearer_token(client, owner, repo, ctx.base_url, permissions)
+        .resolve_bearer_token(client, owner, repo, ctx.host, permissions)
         .await
 }
 
@@ -1470,12 +1476,12 @@ pub async fn get_pull_request_with_client(
             client,
             owner,
             repo,
-            ctx.base_url,
+            ctx.host,
             serde_json::json!({ "contents": "write", "pull_requests": "write" }),
         )
         .await?;
 
-    let url = format!("{}/repos/{owner}/{repo}/pulls/{number}", ctx.base_url);
+    let url = format!("{}/repos/{owner}/{repo}/pulls/{number}", ctx.host.api_url());
     let auth = format!("Bearer {token}");
     let resp = client
         .request(HttpMethod::Get, &url, &github_headers(&auth), None)
@@ -1540,12 +1546,15 @@ pub async fn merge_pull_request_with_client(
             client,
             owner,
             repo,
-            ctx.base_url,
+            ctx.host,
             serde_json::json!({ "contents": "write", "pull_requests": "write" }),
         )
         .await?;
 
-    let url = format!("{}/repos/{owner}/{repo}/pulls/{number}/merge", ctx.base_url);
+    let url = format!(
+        "{}/repos/{owner}/{repo}/pulls/{number}/merge",
+        ctx.host.api_url()
+    );
     let body = serde_json::json!({ "merge_method": method });
     let auth = format!("Bearer {token}");
 
@@ -1604,12 +1613,12 @@ pub async fn close_pull_request_with_client(
             client,
             owner,
             repo,
-            ctx.base_url,
+            ctx.host,
             serde_json::json!({ "contents": "write", "pull_requests": "write" }),
         )
         .await?;
 
-    let url = format!("{}/repos/{owner}/{repo}/pulls/{number}", ctx.base_url);
+    let url = format!("{}/repos/{owner}/{repo}/pulls/{number}", ctx.host.api_url());
     let body = serde_json::json!({ "state": "closed" });
     let auth = format!("Bearer {token}");
 
@@ -1645,14 +1654,14 @@ pub async fn create_installation_access_token_for_projects(
     jwt: &str,
     owner: &str,
     repo: &str,
-    base_url: &str,
+    host: &GitHubHost,
 ) -> anyhow::Result<String> {
     create_installation_access_token_with_permissions(
         client,
         jwt,
         owner,
         repo,
-        base_url,
+        host,
         serde_json::json!({ "issues": "write", "organization_projects": "write" }),
     )
     .await
@@ -1670,6 +1679,75 @@ mod tests {
     use tracing_subscriber::registry;
 
     use super::*;
+
+    fn ghes() -> GitHubHost {
+        GitHubHost::new("https://ghe.example.com", None).unwrap()
+    }
+
+    fn app_with_slug(slug: Option<&str>) -> GitHubAppCredentials {
+        GitHubAppCredentials {
+            app_id:          "test".to_string(),
+            private_key_pem: test_rsa_key().to_string(),
+            slug:            slug.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn installation_url_uses_the_web_origin() {
+        let creds = app_with_slug(Some("fabro"));
+        assert_eq!(
+            creds
+                .installation_url(&GitHubHost::default(), "acme")
+                .unwrap(),
+            "https://github.com/organizations/acme/settings/apps/fabro/installations"
+        );
+        assert_eq!(
+            creds.installation_url(&ghes(), "acme").unwrap(),
+            "https://ghe.example.com/organizations/acme/settings/apps/fabro/installations"
+        );
+    }
+
+    #[tokio::test]
+    async fn missing_installation_guidance_names_the_configured_host() {
+        let mock =
+            MockHttpClient::new().on(HttpMethod::Get, "/repos/acme/widgets/installation", 404, "");
+        let error = app_with_slug(None)
+            .mint_installation_token(
+                &mock,
+                "acme",
+                "widgets",
+                &ghes(),
+                serde_json::json!({}),
+                None,
+            )
+            .await
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("https://ghe.example.com/organizations/acme/settings/installations"),
+            "{error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn auto_merge_posts_to_the_hosts_graphql_endpoint() {
+        let mock =
+            MockHttpClient::new().on(HttpMethod::Post, "/api/graphql", 200, r#"{"data":{}}"#);
+        let creds = GitHubCredentials::Pat("ghp_test".to_string());
+        let host = ghes();
+        enable_auto_merge_with_client(
+            &mock,
+            &GitHubContext::new(&creds, &host),
+            "acme",
+            "widgets",
+            "PR_node",
+            MergeStrategy::Squash,
+        )
+        .await
+        .unwrap();
+        assert_eq!(mock.request_count(), 1);
+    }
 
     #[test]
     fn host_overrides_apply_over_settings() {
@@ -2041,7 +2119,7 @@ mod tests {
                 &mock,
                 "owner",
                 "repo",
-                "",
+                &GitHubHost::default(),
                 serde_json::json!({ "contents": "write" }),
                 None,
             )
@@ -2103,7 +2181,7 @@ mod tests {
                 &mock,
                 access.owner(),
                 &access.repository_names(),
-                "",
+                &GitHubHost::default(),
                 access.permissions_json().unwrap(),
                 None,
             )
@@ -2132,9 +2210,15 @@ mod tests {
             .with_req_header("Authorization", "Bearer test-jwt")
             .with_req_body(r#"{"permissions":{"contents":"write"},"repositories":["repo"]}"#);
 
-        let token = create_installation_access_token(&mock, "test-jwt", "owner", "repo", "")
-            .await
-            .unwrap();
+        let token = create_installation_access_token(
+            &mock,
+            "test-jwt",
+            "owner",
+            "repo",
+            &GitHubHost::default(),
+        )
+        .await
+        .unwrap();
         assert_eq!(token, "ghs_xxx");
     }
 
@@ -2147,10 +2231,11 @@ mod tests {
         let mock =
             MockHttpClient::new().on(HttpMethod::Get, "/repos/owner/repo/installation", 404, "");
 
-        let err = create_installation_access_token(&mock, "jwt", "owner", "repo", "")
-            .await
-            .unwrap_err()
-            .to_string();
+        let err =
+            create_installation_access_token(&mock, "jwt", "owner", "repo", &GitHubHost::default())
+                .await
+                .unwrap_err()
+                .to_string();
         assert!(err.contains("not installed"), "got: {err}");
         assert!(err.contains("owner"), "got: {err}");
     }
@@ -2167,7 +2252,7 @@ mod tests {
             "jwt",
             "owner",
             "repo",
-            "",
+            &GitHubHost::default(),
             serde_json::json!({ "contents": "write" }),
             Some(install_url),
         )
@@ -2188,10 +2273,11 @@ mod tests {
         let mock =
             MockHttpClient::new().on(HttpMethod::Get, "/repos/owner/repo/installation", 403, "");
 
-        let err = create_installation_access_token(&mock, "jwt", "owner", "repo", "")
-            .await
-            .unwrap_err()
-            .to_string();
+        let err =
+            create_installation_access_token(&mock, "jwt", "owner", "repo", &GitHubHost::default())
+                .await
+                .unwrap_err()
+                .to_string();
         assert!(err.contains("suspended"), "got: {err}");
     }
 
@@ -2211,10 +2297,11 @@ mod tests {
                 "",
             );
 
-        let err = create_installation_access_token(&mock, "jwt", "owner", "repo", "")
-            .await
-            .unwrap_err()
-            .to_string();
+        let err =
+            create_installation_access_token(&mock, "jwt", "owner", "repo", &GitHubHost::default())
+                .await
+                .unwrap_err()
+                .to_string();
         assert!(err.contains("does not have access"), "got: {err}");
         assert!(err.contains("repo"), "got: {err}");
     }
@@ -2245,7 +2332,8 @@ mod tests {
             )
             .with_req_header("Authorization", "Bearer ghu_test");
         let creds = GitHubCredentials::Pat("ghu_test".to_string());
-        let ctx = GitHubContext::new(&creds, "https://api.test");
+        let host = GitHubHost::default();
+        let ctx = GitHubContext::new(&creds, &host);
 
         let found = find_open_pull_request_with_client(
             &mock,
@@ -2270,10 +2358,11 @@ mod tests {
         let mock =
             MockHttpClient::new().on(HttpMethod::Get, "/repos/owner/repo/installation", 401, "");
 
-        let err = create_installation_access_token(&mock, "jwt", "owner", "repo", "")
-            .await
-            .unwrap_err()
-            .to_string();
+        let err =
+            create_installation_access_token(&mock, "jwt", "owner", "repo", &GitHubHost::default())
+                .await
+                .unwrap_err()
+                .to_string();
         assert!(err.contains("authentication failed"), "got: {err}");
     }
 
@@ -2302,9 +2391,15 @@ mod tests {
                 r#"{"permissions":{"contents":"write","pull_requests":"write"},"repositories":["repo"]}"#,
             );
 
-        let token = create_installation_access_token_for_pr(&mock, "test-jwt", "owner", "repo", "")
-            .await
-            .unwrap();
+        let token = create_installation_access_token_for_pr(
+            &mock,
+            "test-jwt",
+            "owner",
+            "repo",
+            &GitHubHost::default(),
+        )
+        .await
+        .unwrap();
         assert_eq!(token, "ghs_pr_token");
     }
 
@@ -2350,7 +2445,7 @@ mod tests {
         let creds = app_creds();
         let result = branch_head_sha_with_client(
             &mock,
-            &GitHubContext::new(&creds, ""),
+            &GitHubContext::new(&creds, &GitHubHost::default()),
             "owner",
             "repo",
             "my-branch",
@@ -2372,7 +2467,7 @@ mod tests {
         let creds = app_creds();
         let result = branch_head_sha_with_client(
             &mock,
-            &GitHubContext::new(&creds, ""),
+            &GitHubContext::new(&creds, &GitHubHost::default()),
             "owner",
             "repo",
             "no-such-branch",
@@ -2394,7 +2489,7 @@ mod tests {
         let creds = app_creds();
         let result = branch_head_sha_with_client(
             &mock,
-            &GitHubContext::new(&creds, ""),
+            &GitHubContext::new(&creds, &GitHubHost::default()),
             "owner",
             "repo",
             "broken",
@@ -2418,7 +2513,7 @@ mod tests {
         let creds = GitHubCredentials::Pat("ghu_test".to_string());
         let result = branch_head_sha_with_client(
             &mock,
-            &GitHubContext::new(&creds, ""),
+            &GitHubContext::new(&creds, &GitHubHost::default()),
             "owner",
             "repo",
             "my-branch",
@@ -2563,7 +2658,7 @@ mod tests {
         });
         let detail = get_pull_request_with_client(
             &mock,
-            &GitHubContext::new(&creds, ""),
+            &GitHubContext::new(&creds, &GitHubHost::default()),
             "owner",
             "repo",
             42,
@@ -2609,7 +2704,7 @@ mod tests {
         });
         let err = get_pull_request_with_client(
             &mock,
-            &GitHubContext::new(&creds, ""),
+            &GitHubContext::new(&creds, &GitHubHost::default()),
             "owner",
             "repo",
             999,
@@ -2643,7 +2738,7 @@ mod tests {
         let creds = GitHubCredentials::Pat("ghu_test".to_string());
         let detail = get_pull_request_with_client(
             &mock,
-            &GitHubContext::new(&creds, ""),
+            &GitHubContext::new(&creds, &GitHubHost::default()),
             "owner",
             "repo",
             42,
@@ -2658,10 +2753,13 @@ mod tests {
     async fn resolve_clone_credentials_returns_token_for_token_credentials() {
         let creds = GitHubCredentials::Pat("ghu_test".to_string());
 
-        let credentials =
-            resolve_clone_credentials(&GitHubContext::new(&creds, ""), "owner", "repo")
-                .await
-                .unwrap();
+        let credentials = resolve_clone_credentials(
+            &GitHubContext::new(&creds, &GitHubHost::default()),
+            "owner",
+            "repo",
+        )
+        .await
+        .unwrap();
 
         assert_eq!(credentials.username(), "x-access-token");
         assert_eq!(credentials.password(), "ghu_test");
@@ -2672,10 +2770,13 @@ mod tests {
     async fn resolve_read_only_clone_credentials_returns_static_token_unchanged() {
         let creds = GitHubCredentials::Pat("ghu_test".to_string());
 
-        let credentials =
-            resolve_read_only_clone_credentials(&GitHubContext::new(&creds, ""), "owner", "repo")
-                .await
-                .unwrap();
+        let credentials = resolve_read_only_clone_credentials(
+            &GitHubContext::new(&creds, &GitHubHost::default()),
+            "owner",
+            "repo",
+        )
+        .await
+        .unwrap();
 
         assert_eq!(credentials.username(), "x-access-token");
         assert_eq!(credentials.password(), "ghu_test");
@@ -2702,7 +2803,8 @@ mod tests {
             private_key_pem: test_rsa_key().to_string(),
             slug:            None,
         });
-        let context = GitHubContext::new(&credentials, "");
+        let host = GitHubHost::default();
+        let context = GitHubContext::new(&credentials, &host);
         let token = mint_git_token(
             &mock,
             &context,
@@ -2737,7 +2839,8 @@ mod tests {
             private_key_pem: test_rsa_key().to_string(),
             slug:            None,
         });
-        let context = GitHubContext::new(&credentials, "");
+        let host = GitHubHost::default();
+        let context = GitHubContext::new(&credentials, &host);
         let token = mint_git_token(
             &mock,
             &context,
@@ -2831,7 +2934,7 @@ mod tests {
         });
         merge_pull_request_with_client(
             &mock,
-            &GitHubContext::new(&creds, ""),
+            &GitHubContext::new(&creds, &GitHubHost::default()),
             "owner",
             "repo",
             42,
@@ -2866,7 +2969,7 @@ mod tests {
         });
         let err = merge_pull_request_with_client(
             &mock,
-            &GitHubContext::new(&creds, ""),
+            &GitHubContext::new(&creds, &GitHubHost::default()),
             "owner",
             "repo",
             42,
@@ -2902,7 +3005,7 @@ mod tests {
         });
         let err = merge_pull_request_with_client(
             &mock,
-            &GitHubContext::new(&creds, ""),
+            &GitHubContext::new(&creds, &GitHubHost::default()),
             "owner",
             "repo",
             42,
@@ -2945,9 +3048,15 @@ mod tests {
             private_key_pem: pem.to_string(),
             slug:            None,
         });
-        close_pull_request_with_client(&mock, &GitHubContext::new(&creds, ""), "owner", "repo", 42)
-            .await
-            .unwrap();
+        close_pull_request_with_client(
+            &mock,
+            &GitHubContext::new(&creds, &GitHubHost::default()),
+            "owner",
+            "repo",
+            42,
+        )
+        .await
+        .unwrap();
     }
 
     #[tokio::test]
@@ -2975,7 +3084,7 @@ mod tests {
         });
         let err = close_pull_request_with_client(
             &mock,
-            &GitHubContext::new(&creds, ""),
+            &GitHubContext::new(&creds, &GitHubHost::default()),
             "owner",
             "repo",
             999,

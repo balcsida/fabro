@@ -123,7 +123,7 @@ pub(in crate::server) fn server_github_context<'a>(
     })?;
     Ok(fabro_github::GitHubContext::with_http_client(
         creds,
-        state.github_host.api_url(),
+        &state.github_host,
         http_client,
     ))
 }

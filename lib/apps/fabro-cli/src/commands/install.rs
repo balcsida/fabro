@@ -518,7 +518,7 @@ impl InstallInputSource for InteractiveInstallInputSource {
         match strategy {
             0 => {
                 let token = if gh_available {
-                    fabro_github::gh_auth_token()
+                    fabro_github::gh_auth_token(&fabro_github::GitHubHost::default())
                         .await
                         .context("Run `gh auth login` and rerun `fabro install`.")?
                 } else {
@@ -696,7 +696,7 @@ impl InstallInputSource for NonInteractiveInstallInputSource {
     ) -> Result<GitHubInstallSelection> {
         match self.args.github_strategy {
             Some(InstallGitHubStrategyArg::Token) => {
-                let token = fabro_github::gh_auth_token()
+                let token = fabro_github::gh_auth_token(&fabro_github::GitHubHost::default())
                     .await
                     .context("Run `gh auth login` and rerun `fabro install`.")?;
                 fabro_github::validate_static_github_token(&token)?;
@@ -782,7 +782,7 @@ async fn choose_install_github_selection(
 
     match github_args.strategy {
         Some(InstallGitHubStrategyArg::Token) => {
-            let token = fabro_github::gh_auth_token()
+            let token = fabro_github::gh_auth_token(&fabro_github::GitHubHost::default())
                 .await
                 .context("Run `gh auth login` and rerun `fabro install github`.")?;
             fabro_github::validate_static_github_token(&token)?;

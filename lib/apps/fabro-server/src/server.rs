@@ -1277,7 +1277,7 @@ impl AppState {
             .map_err(|source| RunMaterializeError::LoadCredentials { source })?;
         ProductionAutomationRunMaterializer::new(
             credentials,
-            self.github_host.api_url().to_string(),
+            self.github_host.clone(),
             self.http_client.clone(),
             Arc::clone(&self.automation_repo_cache),
             fabro_workflow_version::WorkflowVersionStore::new(self.store_ref().blobs()),

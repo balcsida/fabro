@@ -1272,9 +1272,11 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
         let payload = pr_content_json("Fix bug", "Narrative.");
         let harness = setup_fallback_test_harness_with_branch_sha(&payload, "stale-sha").await;
         let github_base_url = harness.github_server.url("");
+        let github_host =
+            fabro_github::GitHubHost::new(&github_base_url, Some(&github_base_url)).unwrap();
         let error = open_pull_request(OpenPullRequestRequest {
             run_id:            RunId::new(),
-            github:            fabro_github::GitHubContext::new(&harness.creds, &github_base_url),
+            github:            fabro_github::GitHubContext::new(&harness.creds, &github_host),
             origin_url:        "https://github.com/owner/repo.git",
             base_branch:       "main",
             head_branch:       "fabro/run/123",
@@ -1553,7 +1555,9 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
         .await;
 
         let github_base_url = harness.github_server.url("");
-        let github = github_app::GitHubContext::new(&harness.creds, &github_base_url);
+        let github_host =
+            fabro_github::GitHubHost::new(&github_base_url, Some(&github_base_url)).unwrap();
+        let github = github_app::GitHubContext::new(&harness.creds, &github_host);
 
         let result = open_pull_request(OpenPullRequestRequest {
             run_id: RunId::new(),
@@ -1601,7 +1605,9 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
         let harness = setup_fallback_test_harness(&payload).await;
 
         let github_base_url = harness.github_server.url("");
-        let github = github_app::GitHubContext::new(&harness.creds, &github_base_url);
+        let github_host =
+            fabro_github::GitHubHost::new(&github_base_url, Some(&github_base_url)).unwrap();
+        let github = github_app::GitHubContext::new(&harness.creds, &github_host);
 
         let result = open_pull_request(OpenPullRequestRequest {
             run_id: RunId::new(),
@@ -1635,7 +1641,9 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
         let harness = setup_fallback_test_harness(&payload).await;
 
         let github_base_url = harness.github_server.url("");
-        let github = github_app::GitHubContext::new(&harness.creds, &github_base_url);
+        let github_host =
+            fabro_github::GitHubHost::new(&github_base_url, Some(&github_base_url)).unwrap();
+        let github = github_app::GitHubContext::new(&harness.creds, &github_host);
 
         // Single ~200-char line, no `Plan:` / heading prefix, no newlines.
         let goal = "x".repeat(200);

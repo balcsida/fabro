@@ -313,17 +313,15 @@ impl GitAuthConfig {
 pub(crate) async fn resolve_git_read_auth_config(
     credentials: Option<&fabro_github::GitHubCredentials>,
     repo: &GitHubRepositorySlug,
-    github_api_base_url: &str,
+    host: &fabro_types::GitHubHost,
     http_client: Option<fabro_http::HttpClient>,
 ) -> anyhow::Result<Option<GitAuthConfig>> {
     let Some(credentials) = credentials else {
         return Ok(None);
     };
     let context = match http_client {
-        Some(client) => {
-            fabro_github::GitHubContext::with_http_client(credentials, github_api_base_url, client)
-        }
-        None => fabro_github::GitHubContext::new(credentials, github_api_base_url),
+        Some(client) => fabro_github::GitHubContext::with_http_client(credentials, host, client),
+        None => fabro_github::GitHubContext::new(credentials, host),
     };
     let credentials =
         fabro_github::resolve_read_only_clone_credentials(&context, repo.owner(), repo.repo())

@@ -15,7 +15,7 @@ use fabro_github::token_source::{InstallationTokenSource, ResolvedToken};
 use fabro_github::{GITHUB_CREDENTIAL_HELPER_KEY, GitHubCredentials, GitHubRepositoryAccess};
 use fabro_static::EnvVars;
 use fabro_types::settings::run::{RunIntegrationsGithubSettings, RunMode};
-use fabro_types::{GitHubRepositorySlug, RunSpec, RunTarget};
+use fabro_types::{GitHubHost, GitHubRepositorySlug, RunSpec, RunTarget};
 use fabro_util::shell;
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use petri_runtime::executor::{
@@ -48,6 +48,7 @@ impl StageCredentials {
     pub fn for_run(
         spec: &RunSpec,
         credentials: Option<&GitHubCredentials>,
+        host: &GitHubHost,
         read_tokens: Option<Arc<InstallationTokenSource>>,
     ) -> anyhow::Result<Option<Self>> {
         if spec.settings.run.execution.mode == RunMode::DryRun {
@@ -76,7 +77,7 @@ impl StageCredentials {
         };
         let api_tokens = integration
             .is_token_requested()
-            .then(|| InstallationTokenSource::for_access(credentials, &access))
+            .then(|| InstallationTokenSource::for_access(credentials, host, &access))
             .transpose()?;
         let contents_declared = integration
             .permissions
@@ -487,9 +488,14 @@ mod tests {
         );
         let pat = GitHubCredentials::Pat("scripted-personal-access-token".to_string());
         let read = InstallationTokenSource::pat("scripted-personal-access-token".to_string());
-        let default = StageCredentials::for_run(&spec, Some(&pat), Some(Arc::clone(&read)))
-            .expect("policy")
-            .expect("credentials");
+        let default = StageCredentials::for_run(
+            &spec,
+            Some(&pat),
+            &GitHubHost::default(),
+            Some(Arc::clone(&read)),
+        )
+        .expect("policy")
+        .expect("credentials");
         assert!(default.api_tokens.is_none());
         assert_eq!(default.repositories.len(), 1);
         spec.settings
@@ -504,9 +510,10 @@ mod tests {
             .github
             .additional_repositories
             .insert(GitHubRepositorySlug::try_new("acme/another").expect("slug"));
-        let declared = StageCredentials::for_run(&spec, Some(&pat), Some(read))
-            .expect("policy")
-            .expect("credentials");
+        let declared =
+            StageCredentials::for_run(&spec, Some(&pat), &GitHubHost::default(), Some(read))
+                .expect("policy")
+                .expect("credentials");
         assert!(declared.api_tokens.is_some());
         assert_eq!(declared.repositories.len(), 2);
     }

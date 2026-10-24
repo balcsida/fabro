@@ -143,9 +143,9 @@ trait AutomationGitRemoteResolver: Send + Sync {
 }
 
 struct ServerGitHubRemoteResolver {
-    credentials:  Option<fabro_github::GitHubCredentials>,
-    api_base_url: String,
-    http_client:  Option<fabro_http::HttpClient>,
+    credentials: Option<fabro_github::GitHubCredentials>,
+    host:        fabro_types::GitHubHost,
+    http_client: Option<fabro_http::HttpClient>,
 }
 
 #[async_trait]
@@ -154,7 +154,7 @@ impl AutomationGitRemoteResolver for ServerGitHubRemoteResolver {
         let auth = git_checkout::resolve_git_read_auth_config(
             self.credentials.as_ref(),
             repo,
-            &self.api_base_url,
+            &self.host,
             self.http_client.clone(),
         )
         .await?;
@@ -168,7 +168,7 @@ impl AutomationGitRemoteResolver for ServerGitHubRemoteResolver {
 impl ProductionAutomationRunMaterializer {
     pub(crate) fn new(
         github_credentials: Option<fabro_github::GitHubCredentials>,
-        github_api_base_url: String,
+        github_host: fabro_types::GitHubHost,
         http_client: Option<fabro_http::HttpClient>,
         repo_cache: Arc<GitRepoCache>,
         version_store: WorkflowVersionStore,
@@ -176,7 +176,7 @@ impl ProductionAutomationRunMaterializer {
         Self {
             remote_resolver: Arc::new(ServerGitHubRemoteResolver {
                 credentials: github_credentials,
-                api_base_url: github_api_base_url,
+                host: github_host,
                 http_client,
             }),
             repo_cache,
@@ -772,7 +772,7 @@ mod tests {
     ) -> ProductionAutomationRunMaterializer {
         ProductionAutomationRunMaterializer::new(
             None,
-            "https://api.github.com".to_string(),
+            fabro_types::GitHubHost::default(),
             None,
             Arc::new(GitRepoCache::new(root.join("cache"))),
             store,

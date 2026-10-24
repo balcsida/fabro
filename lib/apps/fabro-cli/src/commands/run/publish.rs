@@ -95,12 +95,14 @@ fn repository(spec: &RunSpec) -> Option<GitHubRepositorySlug> {
 fn token_source(
     spec: &RunSpec,
     credentials: Option<&GitHubCredentials>,
+    host: &GitHubHost,
     permissions: serde_json::Value,
 ) -> Option<Arc<InstallationTokenSource>> {
     let repository = repository(spec)?;
     let credentials = credentials?;
     match InstallationTokenSource::for_repository(
         credentials,
+        host,
         repository.owner().to_string(),
         repository.repo().to_string(),
         permissions,
@@ -120,8 +122,14 @@ fn token_source(
 pub(super) fn read_token_source(
     spec: &RunSpec,
     credentials: Option<&GitHubCredentials>,
+    host: &GitHubHost,
 ) -> Option<Arc<InstallationTokenSource>> {
-    token_source(spec, credentials, serde_json::json!({ "contents": "read" }))
+    token_source(
+        spec,
+        credentials,
+        host,
+        serde_json::json!({ "contents": "read" }),
+    )
 }
 
 /// Fetch credentials over the run's read-only token source.
@@ -166,6 +174,7 @@ pub(super) struct GitHubPublisher {
     /// The run's model, when its settings name one.
     model:        Option<String>,
     credentials:  Option<GitHubCredentials>,
+    host:         GitHubHost,
     /// The run's `contents: write` token source; `None` without credentials.
     push_tokens:  Option<Arc<InstallationTokenSource>>,
     pull_request: Option<PullRequestSettings>,
@@ -182,6 +191,7 @@ impl GitHubPublisher {
         run_id: RunId,
         spec: &RunSpec,
         credentials: Option<GitHubCredentials>,
+        host: GitHubHost,
         llm_source: Arc<dyn CredentialProvider>,
         catalog: Arc<Catalog>,
         records: Arc<dyn PlatformRecords>,
@@ -202,6 +212,7 @@ impl GitHubPublisher {
         let push_tokens = token_source(
             spec,
             credentials.as_ref(),
+            &host,
             serde_json::json!({ "contents": "write" }),
         );
         Some(Self {
@@ -211,6 +222,7 @@ impl GitHubPublisher {
             goal: spec.graph.goal.clone(),
             model: settings.model.name.clone(),
             credentials,
+            host,
             push_tokens,
             pull_request: settings
                 .pull_request
@@ -319,8 +331,7 @@ impl RunPublisher for GitHubPublisher {
             .credentials
             .as_ref()
             .ok_or_else(|| "GitHub credentials are unavailable".to_string())?;
-        let host = github_host().map_err(|err| format!("{err:#}"))?;
-        let context = GitHubContext::new(credentials, host.api_url());
+        let context = GitHubContext::new(credentials, &self.host);
         Box::pin(self.open_pull_request(context, settings, publication)).await
     }
 }
@@ -405,6 +416,7 @@ mod tests {
                 RunId::new(),
                 spec,
                 None,
+                GitHubHost::default(),
                 Arc::new(NoCredentials),
                 Arc::new(test_support::test_catalog()),
                 Arc::new(MemoryPlatformRecords::new()),

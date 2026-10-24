@@ -21,7 +21,7 @@ use std::time::Duration;
 
 use fabro_github::token_source::InstallationTokenSource;
 use fabro_github::{GitHubAppCredentials, GitHubCredentials, GitHubRepositoryAccess};
-use fabro_types::GitHubRepositorySlug;
+use fabro_types::{GitHubHost, GitHubRepositorySlug};
 use tokio::process::Command;
 use tokio::time::sleep;
 
@@ -75,8 +75,8 @@ async fn scoped_token_reaches_the_declared_additional_repository() {
     // The production choreography: every target resolves to one shared
     // installation, then one mint scoped to the whole effective set.
     let creds = GitHubCredentials::App(app.clone());
-    let source =
-        InstallationTokenSource::for_access(&creds, &access).expect("token source should build");
+    let source = InstallationTokenSource::for_access(&creds, &GitHubHost::default(), &access)
+        .expect("token source should build");
     let resolved = source.resolve().await.expect("scoped mint should succeed");
     let token = resolved.token.expose();
 
@@ -108,9 +108,12 @@ async fn scoped_token_reaches_the_declared_additional_repository() {
     )
     .expect("primary-only access should validate")
     .expect("origin should produce an access value");
-    let narrow_source =
-        InstallationTokenSource::for_access(&GitHubCredentials::App(app), &primary_only)
-            .expect("primary-only token source should build");
+    let narrow_source = InstallationTokenSource::for_access(
+        &GitHubCredentials::App(app),
+        &GitHubHost::default(),
+        &primary_only,
+    )
+    .expect("primary-only token source should build");
     let narrow = narrow_source
         .resolve()
         .await

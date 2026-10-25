@@ -327,10 +327,10 @@ strategy = "token"
 |---|---|---|
 | `strategy` | `token` or `app` | `token` |
 | `app_id`, `client_id`, `slug` | GitHub App identity (App mode) | none |
-| `web_url` | Web origin of the GitHub deployment, such as `https://ghe.example.com`. Override with `GITHUB_WEB_URL` | `https://github.com` |
-| `api_url` | REST API base URL. Override with `GITHUB_BASE_URL` | derived from `web_url` (`https://api.github.com`, `https://api.<host>` for `*.ghe.com`, `<web_url>/api/v3` otherwise) |
+| `web_url` | Web origin of the GitHub deployment, such as `https://ghe.example.com`; must be `https` (`http` only for loopback). Override with `GITHUB_WEB_URL`. Read at server startup: changing it needs a restart | `https://github.com` |
+| `api_url` | REST API base URL; may be plain `http` (for a proxy or mock). Override with `GITHUB_BASE_URL` | derived from `web_url` (`https://api.github.com`, `https://api.<host>` for `*.ghe.com`, `<web_url>/api/v3` otherwise) |
 
-For GitHub Enterprise Server or GitHub Enterprise Cloud, set `web_url` (see [GitHub Enterprise Server and GitHub Enterprise Cloud](/integrations/github#github-enterprise-server-and-github-enterprise-cloud)). The CLI and the run worker read the host from the local `settings.toml` or `GITHUB_WEB_URL`.
+For GitHub Enterprise Server or GitHub Enterprise Cloud, set `web_url` (see [GitHub Enterprise Server and GitHub Enterprise Cloud](/integrations/github#github-enterprise-server-and-github-enterprise-cloud)). The CLI and the run worker read the host from the local `settings.toml` or `GITHUB_WEB_URL`. Put `web_url` in `settings.toml` before `fabro install`; the installer does not persist it from the environment.
 
 For GitHub App mode, set `strategy = "app"` and include `app_id`, `client_id`, and `slug`. Webhook delivery is configured under `[server.integrations.github.webhooks]`:
 

@@ -188,9 +188,11 @@ web_url = "https://ghe.example.com"
 | Setting | Environment override | Description |
 |---|---|---|
 | `server.integrations.github.web_url` | `GITHUB_WEB_URL` | Web origin of the GitHub deployment, for example `https://ghe.example.com`. Defaults to `https://github.com`. Must be `https` and must not contain a path, query or fragment (plain `http` is accepted only for loopback hosts such as `localhost` and `127.0.0.1`). |
-| `server.integrations.github.api_url` | `GITHUB_BASE_URL` | REST API base URL. Optional: when unset it is derived from `web_url` as shown below. |
+| `server.integrations.github.api_url` | `GITHUB_BASE_URL` | REST API base URL. Optional: when unset it is derived from `web_url` as shown below. May be plain `http` on any host, for example to reach GitHub through a proxy or a mock; `web_url` must still be `https`. |
 
 The environment variables win over `settings.toml`. `GITHUB_WEB_URL` alone re-derives the API URL from the new web origin; `GITHUB_BASE_URL` alone replaces only the API URL.
+
+The server reads the host once at startup, so changing `web_url` or `api_url` takes effect only after a server restart.
 
 ### Derived URLs
 
@@ -203,7 +205,7 @@ The environment variables win over `settings.toml`. `GITHUB_WEB_URL` alone re-de
 | Pull request link | `https://github.com/owner/repo/pull/7` | `https://octocorp.ghe.com/owner/repo/pull/7` | `https://ghe.example.com/owner/repo/pull/7` |
 | Commit email domain | `users.noreply.github.com` | `users.noreply.octocorp.ghe.com` | `users.noreply.ghe.example.com` |
 
-A host named `github.com` or `*.github.com` is treated as github.com, `ghe.com` or `*.ghe.com` as GitHub Enterprise Cloud, and any other host as GitHub Enterprise Server.
+A host named exactly `github.com` is treated as github.com, `ghe.com` or `*.ghe.com` as GitHub Enterprise Cloud, and any other host as GitHub Enterprise Server.
 
 ### Where the host is read
 
@@ -213,7 +215,7 @@ The server, the run worker and the CLI all need to agree on the host:
 - The **run worker** reads the same `settings.toml` (through `FABRO_HOME`) and the same environment variables.
 - The **CLI** reads the host from the local `settings.toml` or from `GITHUB_WEB_URL`; it does not ask a remote server. If you run `fabro` against a remote server, set the same `web_url` in your local `settings.toml` (or export `GITHUB_WEB_URL`) so repository URLs, `fabro install` and `fabro doctor` target the enterprise host.
 
-Set `web_url` before running `fabro install`. The installer uses it for `gh auth token --hostname <host>`, for the GitHub App manifest registration and for the links it prints.
+Put `web_url` in `settings.toml` before running `fabro install`. The installer does not persist the host, so `GITHUB_WEB_URL` alone is not enough: a server restarted without that variable falls back to github.com. The installer uses it for `gh auth token --hostname <host>`, for the GitHub App manifest registration and for the links it prints. The `App:` link it prints points at `/github-apps/<slug>` on GitHub Enterprise Server and at `/apps/<slug>` on github.com and GitHub Enterprise Cloud.
 
 ### Authentication
 
@@ -223,7 +225,13 @@ Set `web_url` before running `fabro install`. The installer uses it for `gh auth
 
 ### Custom certificate authorities
 
-Enterprise hosts often use a certificate from a private CA. Fabro always verifies TLS certificates and has no setting to disable verification. Install the CA certificate in the system trust store of the server host, the run worker host and the sandbox image, or point the processes at a CA bundle with `SSL_CERT_FILE` (or `SSL_CERT_DIR`). Git and the `gh` CLI inside sandboxes honor the same variables, so set them in the sandbox environment as well.
+Enterprise hosts often use a certificate from a private CA. Fabro always verifies TLS certificates and has no setting to disable verification.
+
+Fabro's HTTP client uses rustls with the platform certificate verifier:
+
+- **Linux:** `SSL_CERT_FILE` and `SSL_CERT_DIR` are honoured, in addition to the system trust store. The server passes both on to the run workers it starts.
+- **macOS:** the system Keychain is used. **Windows:** the Windows certificate store is used. The variables are not read on either platform, so install the CA in the system store.
+- **Sandboxes:** containers do not inherit the host's trust store. Bake the CA into the sandbox image, or set `SSL_CERT_FILE` and `GIT_SSL_CAINFO` in the sandbox environment so Git and the `gh` CLI trust it.
 
 ### The `gh` CLI in sandboxes
 

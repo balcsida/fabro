@@ -109,7 +109,7 @@ use tracing::{info, warn};
 use super::publish;
 use super::runner::{self, WorkerTitlePhase};
 use crate::args::RunWorkerMode;
-use crate::command_context;
+use crate::{command_context, user_config};
 
 /// What the worker holds when it hands a run to Petri.
 pub(super) struct PetriWorker<'a> {
@@ -221,7 +221,7 @@ pub(super) async fn execute(worker: PetriWorker<'_>) -> Result<()> {
             None
         }
     };
-    let github_host = crate::user_config::github_host()?;
+    let github_host = user_config::github_host()?;
     let read_tokens =
         publish::read_token_source(&worker.run_state.spec, github.as_ref(), &github_host);
     runtime.stage_credentials = StageCredentials::for_run(

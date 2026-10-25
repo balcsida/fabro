@@ -123,6 +123,10 @@ mod tests {
 
     #[cfg(unix)]
     #[tokio::test]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "unit test stages a fake gh script and reads its argument log with sync std::fs"
+    )]
     async fn gh_invocations_target_the_configured_host() {
         use std::os::unix::fs::PermissionsExt;
 

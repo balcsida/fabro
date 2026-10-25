@@ -14,7 +14,7 @@ use super::{resolution, selection};
 use crate::args::RunArgs;
 use crate::command_context::CommandContext;
 use crate::commands::resolve_run_id;
-use crate::user_config::{RunSettingsKeyPresence, read_project_run_settings_key_presence};
+use crate::user_config::{self, RunSettingsKeyPresence, read_project_run_settings_key_presence};
 
 pub(crate) struct CreatedRun {
     pub(crate) run_id: RunId,
@@ -105,7 +105,7 @@ pub(crate) async fn create_run(
                 && args.target_repo_selector.is_none() =>
         {
             fabro_manifest::configured_repo_origin_url_for_location(
-                &crate::user_config::github_host()?,
+                &user_config::github_host()?,
                 package.workflow_location(),
             )?
         }

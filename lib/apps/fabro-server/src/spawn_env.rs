@@ -73,6 +73,10 @@ const WORKER_ENV_ALLOWLIST: &[&str] = &[
     // reach it through FABRO_HOME.
     EnvVars::GITHUB_WEB_URL,
     EnvVars::GITHUB_BASE_URL,
+    // Private CA bundle for the worker's TLS stack (rustls platform verifier;
+    // honoured on Linux only), e.g. for a GitHub Enterprise Server host.
+    EnvVars::SSL_CERT_FILE,
+    EnvVars::SSL_CERT_DIR,
     // A test's checkpoint gates: the worker's hooks hold at a named point
     // until the test releases them, so a crash can be placed there.
     EnvVars::FABRO_TEST_CHECKPOINT_GATES,

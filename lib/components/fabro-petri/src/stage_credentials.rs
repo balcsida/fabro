@@ -322,8 +322,8 @@ impl CredentialEnv {
             ),
             (helper_key.clone(), String::new()),
             (helper_key, format!("store --file={}", self.store_path())),
-            (rewrite_key.clone(), format!("git@{}:", host.host())),
-            (rewrite_key, format!("ssh://git@{}/", host.host())),
+            (rewrite_key.clone(), format!("git@{}:", host.hostname())),
+            (rewrite_key, format!("ssh://git@{}/", host.hostname())),
         ];
         for index in 0..count {
             for prefix in ["GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_"] {
@@ -371,7 +371,10 @@ impl SpawnEnv for CredentialEnv {
             // The `gh` CLI reads GITHUB_TOKEN for github.com only; any other
             // host needs GH_HOST and GH_ENTERPRISE_TOKEN.
             if !self.credentials.host.is_github_com() {
-                env.insert(EnvVars::GH_HOST.into(), self.credentials.host.host().into());
+                env.insert(
+                    EnvVars::GH_HOST.into(),
+                    self.credentials.host.hostname().into(),
+                );
                 env.insert(
                     EnvVars::GH_ENTERPRISE_TOKEN.into(),
                     resolved.token.expose().into(),
@@ -604,6 +607,17 @@ mod tests {
         assert_eq!(env["GH_HOST"], "ghe.example.com");
         assert_eq!(env["GH_ENTERPRISE_TOKEN"], env["GITHUB_TOKEN"]);
         assert!(env["GITHUB_TOKEN"].starts_with("scripted-token-generation-"));
+    }
+
+    #[tokio::test]
+    async fn a_ghes_scope_with_a_port_keeps_the_port_out_of_ssh_and_gh_host() {
+        let host = GitHubHost::new("https://ghe.example.com:8443", None).expect("host");
+        let (env, _store) = process_env_on(host).await;
+        let config = git_config(&env);
+        assert_eq!(config[3].0, "url.https://ghe.example.com:8443/.insteadOf");
+        assert_eq!(config[3].1, "git@ghe.example.com:");
+        assert_eq!(config[4].1, "ssh://git@ghe.example.com/");
+        assert_eq!(env["GH_HOST"], "ghe.example.com");
     }
 
     #[test]

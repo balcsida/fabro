@@ -32,19 +32,19 @@ impl GhCli {
         }
 
         let auth = Command::new(command)
-            .args(["auth", "status", "--hostname", host.host()])
+            .args(["auth", "status", "--hostname", host.hostname()])
             .output()
             .await;
         match auth {
             Ok(o) if o.status.success() => {
-                debug!("gh CLI available and authenticated for {}", host.host());
+                debug!("gh CLI available and authenticated for {}", host.hostname());
                 Some(Self {
                     command: command.to_string(),
                     host:    host.clone(),
                 })
             }
             _ => {
-                debug!("gh is not authenticated for {}", host.host());
+                debug!("gh is not authenticated for {}", host.hostname());
                 None
             }
         }
@@ -56,7 +56,7 @@ impl GhCli {
             .args([
                 "api",
                 "--hostname",
-                self.host.host(),
+                self.host.hostname(),
                 "/user",
                 "--jq",
                 ".login",
@@ -80,7 +80,7 @@ impl GhCli {
             .args([
                 "api",
                 "--hostname",
-                self.host.host(),
+                self.host.hostname(),
                 "--paginate",
                 "/user/memberships/orgs",
                 "--jq",
@@ -138,7 +138,7 @@ mod tests {
 
         for (web_url, hostname) in [
             ("https://github.com", "github.com"),
-            ("https://ghe.example.com:8443", "ghe.example.com:8443"),
+            ("https://ghe.example.com:8443", "ghe.example.com"),
         ] {
             let host = GitHubHost::new(web_url, None).unwrap();
             let gh = GhCli::detect_with_command(script.to_str().unwrap(), &host)

@@ -468,7 +468,10 @@ async fn reconcile_existing_pull_request(
             owner:    owner.to_string(),
             repo:     repo.to_string(),
             number:   existing.number,
-            html_url: existing.html_url.clone(),
+            html_url: req
+                .github
+                .host()
+                .pull_request_url(owner, repo, existing.number),
         },
         title:       existing.title,
         base_branch: req.base_branch.to_string(),
@@ -622,11 +625,15 @@ pub async fn open_pull_request(
     )
     .await;
 
+    let html_url = req
+        .github
+        .host()
+        .pull_request_url(&owner, &repo, created.number);
     let link = PullRequestLink {
         owner,
         repo,
         number: created.number,
-        html_url: created.html_url.clone(),
+        html_url,
     };
 
     Ok(CreatedPullRequest {
@@ -1547,7 +1554,7 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
             &payload,
             "final-sha",
             serde_json::json!([{
-                "html_url": "https://github.com/owner/repo/pull/7",
+                "html_url": "https://github.com/OWNER/Repo/pull/7",
                 "number": 7,
                 "node_id": "PR_existing",
                 "title": "Reconciled title",
@@ -1582,6 +1589,8 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
         .expect("reconciliation should adopt the existing pull request");
 
         assert_eq!(result.link.number, 7);
+        // The URL follows the stored coordinates, not the API's spelling.
+        assert_eq!(result.link.html_url, "https://github.com/owner/repo/pull/7");
         assert_eq!(result.title, "Reconciled title");
         // Adoption must not cost an LLM call or a create request.
         assert_eq!(
@@ -1632,6 +1641,9 @@ capabilities = { text = true, tools = true, response_format = { json_object = tr
         .expect("PR creation should succeed");
 
         assert_eq!(result.title, "Fix telemetry leak");
+        // The mock API answers with an `example.test` URL; the stored URL is
+        // derived from the stored coordinates instead.
+        assert_eq!(result.link.html_url, "https://github.com/owner/repo/pull/1");
         harness.assert_mocks_called_once().await;
     }
 

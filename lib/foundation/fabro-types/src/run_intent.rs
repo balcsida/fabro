@@ -82,6 +82,7 @@ impl GitRunTarget {
     ///
     /// Same as [`GitRunTarget::validate`].
     pub fn canonical(self) -> Result<Self, GitCoordinateValidationError> {
+        // The host does not affect the canonical form.
         self.validate(&GitHubHost::default())
             .map(ValidatedGitRunTarget::into_target)
     }
@@ -146,6 +147,7 @@ impl RunTarget {
     ///
     /// Same as [`RunTarget::validate`].
     pub fn canonical(self) -> Result<Self, TargetValidationError> {
+        // The host does not affect the canonical form.
         self.validate(&GitHubHost::default())
             .map(|validated| validated.target)
     }

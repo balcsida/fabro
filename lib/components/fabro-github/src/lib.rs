@@ -79,7 +79,13 @@ fn host_with_overrides(
         (None, Some(api)) => GitHubHost::new(configured.web_url(), Some(api)),
         (Some(web), api) => GitHubHost::new(web, api),
     };
-    host.context("invalid GITHUB_WEB_URL or GITHUB_BASE_URL override")
+    host.map_err(|error| {
+        let variable = match error.field() {
+            "api_url" => EnvVars::GITHUB_BASE_URL,
+            _ => EnvVars::GITHUB_WEB_URL,
+        };
+        anyhow::Error::new(error).context(format!("invalid {variable} override"))
+    })
 }
 
 /// Bundle of GitHub credentials and the GitHub host, threaded through every
@@ -345,7 +351,7 @@ pub fn validate_static_github_token(token: &str) -> anyhow::Result<()> {
 
 pub async fn gh_auth_token(host: &GitHubHost) -> anyhow::Result<String> {
     let output = Command::new("gh")
-        .args(["auth", "token", "--hostname", host.host()])
+        .args(["auth", "token", "--hostname", host.hostname()])
         .output()
         .await
         .context("Failed to run `gh auth token`")?;
@@ -1799,7 +1805,19 @@ mod tests {
         let web = host_with_overrides(&configured, Some("https://octocorp.ghe.com"), None).unwrap();
         assert_eq!(web.api_url(), "https://api.octocorp.ghe.com");
 
-        assert!(host_with_overrides(&configured, Some("http://ghe.example.com"), None).is_err());
+        let plain_web =
+            host_with_overrides(&configured, Some("http://ghe.example.com"), None).unwrap_err();
+        assert!(
+            plain_web.to_string().contains("GITHUB_WEB_URL"),
+            "{plain_web}"
+        );
+
+        let plain_api =
+            host_with_overrides(&configured, None, Some("http://mirror.corp:8080")).unwrap();
+        assert_eq!(plain_api.api_url(), "http://mirror.corp:8080");
+        let bad_api =
+            host_with_overrides(&configured, None, Some("ftp://mirror.corp")).unwrap_err();
+        assert!(bad_api.to_string().contains("GITHUB_BASE_URL"), "{bad_api}");
     }
 
     #[test]

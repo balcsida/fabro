@@ -188,6 +188,8 @@ impl EnvVars {
     pub const RUST_BACKTRACE: &'static str = "RUST_BACKTRACE";
     pub const RUST_LOG: &'static str = "RUST_LOG";
     pub const SHELL: &'static str = "SHELL";
+    pub const SSL_CERT_DIR: &'static str = "SSL_CERT_DIR";
+    pub const SSL_CERT_FILE: &'static str = "SSL_CERT_FILE";
     pub const TERM: &'static str = "TERM";
     pub const TMPDIR: &'static str = "TMPDIR";
     pub const TWIN_OPENAI_BIND_ADDR: &'static str = "TWIN_OPENAI_BIND_ADDR";
@@ -345,6 +347,8 @@ mod tests {
             EnvVars::RUST_BACKTRACE,
             EnvVars::RUST_LOG,
             EnvVars::SHELL,
+            EnvVars::SSL_CERT_DIR,
+            EnvVars::SSL_CERT_FILE,
             EnvVars::TERM,
             EnvVars::TMPDIR,
             EnvVars::TWIN_OPENAI_BIND_ADDR,

@@ -121,7 +121,11 @@ impl<'de> Deserialize<'de> for PullRequestLink {
             .html_url
             .unwrap_or_else(|| GitHubHost::default().pull_request_url(&owner, &repo, number));
         let url_link = github_pull_request_link_from_url(&html_url).map_err(D::Error::custom)?;
-        if (&url_link.owner, &url_link.repo, url_link.number) != (&owner, &repo, number) {
+        // GitHub owner and repository names are case-insensitive.
+        if !url_link.owner.eq_ignore_ascii_case(&owner)
+            || !url_link.repo.eq_ignore_ascii_case(&repo)
+            || url_link.number != number
+        {
             return Err(D::Error::custom(
                 "pull request html_url does not match owner/repo/number",
             ));
@@ -338,6 +342,27 @@ mod tests {
                 "number": 270,
                 "html_url": "https://github.com/fabro-sh/fabro/pull/270"
             })
+        );
+    }
+
+    #[test]
+    fn pull_request_link_owner_and_repo_match_html_url_case_insensitively() {
+        let link = serde_json::from_value::<PullRequestLink>(json!({
+            "owner": "Acme",
+            "repo": "Widgets",
+            "number": 7,
+            "html_url": "https://github.com/acme/widgets/pull/7"
+        }))
+        .unwrap();
+        assert_eq!(link.number, 7);
+        assert!(
+            serde_json::from_value::<PullRequestLink>(json!({
+                "owner": "Acme",
+                "repo": "Other",
+                "number": 7,
+                "html_url": "https://github.com/acme/widgets/pull/7"
+            }))
+            .is_err()
         );
     }
 

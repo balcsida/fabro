@@ -67,15 +67,16 @@ impl Default for GitHubHost {
 
 #[expect(
     clippy::disallowed_types,
-    reason = "GitHub host settings are public service origins; validation errors never echo credentials."
+    reason = "GitHub host settings are public service origins; validation errors name the field and rule but never echo the value, which may embed credentials."
 )]
-fn parse_origin(field: &'static str, raw: &str) -> Result<url::Url, GitHubHostError> {
+fn parse_origin(
+    field: &'static str,
+    raw: &str,
+    plain_http_anywhere: bool,
+) -> Result<url::Url, GitHubHostError> {
     let raw = raw.trim().trim_end_matches('/');
     let parsed = url::Url::parse(raw).map_err(|_| {
-        GitHubHostError::new(
-            field,
-            format!("must be an https URL such as https://github.com (got `{raw}`)"),
-        )
+        GitHubHostError::new(field, "must be an https URL such as https://github.com")
     })?;
     let host = parsed
         .host_str()
@@ -83,12 +84,14 @@ fn parse_origin(field: &'static str, raw: &str) -> Result<url::Url, GitHubHostEr
     let loopback = matches!(host, "localhost" | "127.0.0.1" | "[::1]");
     match parsed.scheme() {
         "https" => {}
-        "http" if loopback => {}
+        "http" if loopback || plain_http_anywhere => {}
         _ => {
-            return Err(GitHubHostError::new(
-                field,
-                format!("must use https (got `{raw}`); http is only allowed for localhost"),
-            ));
+            let problem = if plain_http_anywhere {
+                "must use http or https"
+            } else {
+                "must use https; http is only allowed for localhost"
+            };
+            return Err(GitHubHostError::new(field, problem));
         }
     }
     if !parsed.username().is_empty() || parsed.password().is_some() {
@@ -107,7 +110,7 @@ impl GitHubHost {
     /// Builds a host from the web origin and an optional explicit API URL.
     /// Without `api_url`, the API URL is derived from the web origin.
     pub fn new(web_url: &str, api_url: Option<&str>) -> Result<Self, GitHubHostError> {
-        let web = parse_origin("web_url", web_url)?;
+        let web = parse_origin("web_url", web_url, false)?;
         if !matches!(web.path(), "" | "/") {
             return Err(GitHubHostError::new(
                 "web_url",
@@ -117,7 +120,7 @@ impl GitHubHost {
         let web_origin = web.origin().ascii_serialization();
         let api_url = match api_url {
             Some(api) => {
-                parse_origin("api_url", api)?;
+                parse_origin("api_url", api, true)?;
                 api.trim().trim_end_matches('/').to_string()
             }
             None => derive_api_url(&web_origin, web.host_str().unwrap_or_default()),
@@ -170,6 +173,18 @@ impl GitHubHost {
         self.host() == "github.com"
     }
 
+    /// Public page of a GitHub App; also the base of its install link.
+    /// GitHub Enterprise Server serves it under `/github-apps/`.
+    #[must_use]
+    pub fn app_page_url(&self, slug: &str) -> String {
+        let prefix = if self.is_github_com() || self.hostname().ends_with(".ghe.com") {
+            "apps"
+        } else {
+            "github-apps"
+        };
+        format!("{}/{prefix}/{slug}", self.web_url)
+    }
+
     /// GraphQL endpoint derived from the REST API URL.
     #[must_use]
     pub fn graphql_url(&self) -> String {
@@ -192,7 +207,7 @@ impl GitHubHost {
     /// Domain of GitHub's private noreply commit emails.
     #[must_use]
     pub fn noreply_email_domain(&self) -> String {
-        format!("users.noreply.{}", self.host())
+        format!("users.noreply.{}", self.hostname())
     }
 
     /// Git config key that routes this host's HTTPS credentials to a helper.
@@ -206,18 +221,18 @@ impl GitHubHost {
     #[must_use]
     pub fn is_origin(&self, origin: &str) -> bool {
         let host = self.host();
+        let hostname = self.hostname();
         origin.starts_with(&format!("{}/", self.web_url))
             || origin.starts_with(&format!("http://{host}/"))
-            || origin.starts_with(&format!("git@{host}:"))
-            || origin.starts_with(&format!("ssh://git@{host}/"))
+            || origin.starts_with(&format!("git@{hostname}:"))
+            || origin.starts_with(&format!("ssh://git@{hostname}/"))
     }
 }
 
 fn derive_api_url(web_origin: &str, hostname: &str) -> String {
-    let under = |domain: &str| hostname == domain || hostname.ends_with(&format!(".{domain}"));
-    if under("github.com") {
+    if hostname == "github.com" {
         DEFAULT_API_URL.to_string()
-    } else if under("ghe.com") {
+    } else if hostname == "ghe.com" || hostname.ends_with(".ghe.com") {
         web_origin.replacen("://", "://api.", 1)
     } else {
         format!("{web_origin}/api/v3")
@@ -351,14 +366,72 @@ mod tests {
             path.to_string().contains("must not contain a path"),
             "{path}"
         );
-        let api = GitHubHost::new(
+        let api =
+            GitHubHost::new("https://ghe.example.com", Some("ftp://ghe.example.com")).unwrap_err();
+        assert_eq!(api.field(), "api_url");
+        assert!(
+            api.to_string().starts_with("api_url must use http"),
+            "{api}"
+        );
+    }
+
+    #[test]
+    fn errors_never_echo_the_value() {
+        for web in [
+            "http://user:secret@ghe.example.com",
+            "https://user:secret@ghe.example.com",
+            "secret ghe.example.com",
+        ] {
+            let error = GitHubHost::new(web, None).unwrap_err();
+            assert!(!error.to_string().contains("secret"), "{error}");
+        }
+        let error = GitHubHost::new(
             "https://ghe.example.com",
-            Some("http://ghe.example.com/api/v3"),
+            Some("ftp://user:secret@ghe.example.com"),
         )
         .unwrap_err();
-        assert!(
-            api.to_string().starts_with("api_url must use https"),
-            "{api}"
+        assert!(!error.to_string().contains("secret"), "{error}");
+    }
+
+    #[test]
+    fn api_url_accepts_plain_http_on_any_host() {
+        let ghes = GitHubHost::new(
+            "https://ghe.example.com",
+            Some("http://github-mirror.corp:8080/"),
+        )
+        .unwrap();
+        assert_eq!(ghes.api_url(), "http://github-mirror.corp:8080");
+    }
+
+    #[test]
+    fn port_is_kept_for_http_urls_only() {
+        let ghes = host("https://ghe.example.com:8443");
+        assert_eq!(ghes.noreply_email_domain(), "users.noreply.ghe.example.com");
+        assert!(ghes.is_origin("git@ghe.example.com:o/r.git"));
+        assert!(ghes.is_origin("ssh://git@ghe.example.com/o/r"));
+        assert!(ghes.is_origin("https://ghe.example.com:8443/o/r"));
+    }
+
+    #[test]
+    fn only_github_com_itself_derives_the_github_com_api() {
+        let sub = host("https://foo.github.com");
+        assert!(!sub.is_github_com());
+        assert_eq!(sub.api_url(), "https://foo.github.com/api/v3");
+    }
+
+    #[test]
+    fn app_page_url_follows_the_host_kind() {
+        assert_eq!(
+            GitHubHost::default().app_page_url("my-app"),
+            "https://github.com/apps/my-app"
+        );
+        assert_eq!(
+            host("https://octocorp.ghe.com").app_page_url("my-app"),
+            "https://octocorp.ghe.com/apps/my-app"
+        );
+        assert_eq!(
+            host("https://ghe.example.com").app_page_url("my-app"),
+            "https://ghe.example.com/github-apps/my-app"
         );
     }
 

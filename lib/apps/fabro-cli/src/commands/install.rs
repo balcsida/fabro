@@ -1169,7 +1169,7 @@ async fn setup_github_app(
         printer,
         "  {}",
         s.dim
-            .apply_to(format!("App: {}/apps/{slug}", github_host.web_url()))
+            .apply_to(format!("App: {}", github_host.app_page_url(&slug)))
     );
 
     // Return secret pairs

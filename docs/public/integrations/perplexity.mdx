@@ -1,0 +1,63 @@
+---
+title: "Perplexity"
+description: "Use Perplexity Sonar models through its OpenAI-compatible API"
+---
+
+[Perplexity](https://www.perplexity.ai/) serves its Sonar models behind an OpenAI-compatible Chat Completions API. Fabro's built-in catalog does not include a `perplexity` provider, so you define it in `settings.toml`. Its API key is an optional server vault secret, `PERPLEXITY_API_KEY`, which Fabro derives from the provider id.
+
+## Prerequisites
+
+- A Perplexity account with API credit
+- An API key from [perplexity.ai/settings/api](https://www.perplexity.ai/settings/api)
+
+## Define the provider
+
+Add the provider to the settings file used by the Fabro server. For a local server, this is usually `~/.fabro/settings.toml`.
+
+```toml title="settings.toml"
+_version = 1
+
+[llm.providers.perplexity]
+display_name = "Perplexity"
+base_url = "https://api.perplexity.ai"
+auth = { type = "bearer" }
+api_key_url = "https://www.perplexity.ai/settings/api"
+aliases = ["sonar"]
+default_model = "sonar-pro"
+priority = 55
+
+[llm.providers.perplexity.models."sonar-pro"]
+display_name = "Sonar Pro"
+family = "sonar"
+aliases = ["perplexity"]
+limits = { context_tokens = 200000, max_output_tokens = 8000 }
+capabilities = { text = true, tools = true, reasoning = false }
+pricing = { input_usd_micros_per_million = 3000000, output_usd_micros_per_million = 15000000 }
+
+[llm.providers.perplexity.models."sonar-reasoning-pro"]
+display_name = "Sonar Reasoning Pro"
+family = "sonar"
+aliases = ["sonar-reasoning"]
+limits = { context_tokens = 200000, max_output_tokens = 8000 }
+capabilities = { text = true, tools = false, reasoning = true }
+pricing = { input_usd_micros_per_million = 3000000, output_usd_micros_per_million = 15000000 }
+```
+
+## Configure credentials
+
+```bash
+fabro secret set PERPLEXITY_API_KEY pplx-...
+fabro secret --server https://your-fabro.example set PERPLEXITY_API_KEY pplx-...
+```
+
+## Use Perplexity models
+
+```bash
+fabro model list --provider perplexity
+fabro model test --provider perplexity --model sonar-pro
+fabro run workflow.fabro --provider perplexity --model sonar-pro
+```
+
+## Costs
+
+Catalog prices above mirror Perplexity's published Sonar Pro and Sonar Reasoning Pro token rates; Perplexity also bills per-request search fees, which the catalog does not model.

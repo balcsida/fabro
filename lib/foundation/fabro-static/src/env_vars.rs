@@ -115,6 +115,7 @@ impl EnvVars {
     pub const OPENAI_ORG_ID: &'static str = "OPENAI_ORG_ID";
     pub const OPENAI_PROJECT_ID: &'static str = "OPENAI_PROJECT_ID";
     pub const OPENROUTER_API_KEY: &'static str = "OPENROUTER_API_KEY";
+    pub const PERPLEXITY_API_KEY: &'static str = "PERPLEXITY_API_KEY";
     pub const POOLSIDE_API_KEY: &'static str = "POOLSIDE_API_KEY";
     pub const ZAI_API_KEY: &'static str = "ZAI_API_KEY";
 
@@ -284,6 +285,7 @@ mod tests {
             EnvVars::OPENAI_ORG_ID,
             EnvVars::OPENAI_PROJECT_ID,
             EnvVars::OPENROUTER_API_KEY,
+            EnvVars::PERPLEXITY_API_KEY,
             EnvVars::POOLSIDE_API_KEY,
             EnvVars::ZAI_API_KEY,
             EnvVars::GH_ENTERPRISE_TOKEN,

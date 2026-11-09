@@ -103,6 +103,7 @@
               "integrations/openrouter",
               "integrations/modal",
               "integrations/fireworks",
+              "integrations/perplexity",
               "integrations/slack",
               "integrations/jira",
               "integrations/brave-search",

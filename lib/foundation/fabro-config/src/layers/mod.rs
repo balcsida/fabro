@@ -33,11 +33,12 @@ pub use run::{
     RunPullRequestLayer, RunRunBranchLayer, RunScmLayer, ScmGitHubLayer, StringOrSplice,
 };
 pub use server::{
-    GithubIntegrationLayer, IntegrationWebhooksLayer, ObjectStoreLocalLayer, ObjectStoreS3Layer,
-    ServerApiLayer, ServerApprovalsLayer, ServerArtifactsLayer, ServerAuthGithubLayer,
-    ServerAuthLayer, ServerIntegrationsLayer, ServerLayer, ServerListenLayer, ServerLoggingLayer,
-    ServerSandboxLayer, ServerSandboxProviderLayer, ServerSandboxProvidersLayer,
-    ServerSchedulerLayer, ServerStorageLayer, ServerWebLayer, SlackIntegrationLayer,
+    GithubIntegrationLayer, IntegrationWebhooksLayer, JiraIntegrationLayer, ObjectStoreLocalLayer,
+    ObjectStoreS3Layer, ServerApiLayer, ServerApprovalsLayer, ServerArtifactsLayer,
+    ServerAuthGithubLayer, ServerAuthLayer, ServerIntegrationsLayer, ServerLayer,
+    ServerListenLayer, ServerLoggingLayer, ServerSandboxLayer, ServerSandboxProviderLayer,
+    ServerSandboxProvidersLayer, ServerSchedulerLayer, ServerStorageLayer, ServerWebLayer,
+    SlackIntegrationLayer,
 };
 pub use settings::SettingsLayer;
 pub use workflow::WorkflowLayer;

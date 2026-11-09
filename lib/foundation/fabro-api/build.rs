@@ -343,6 +343,11 @@ fn main() {
             &[],
         ),
         (
+            "JiraIntegrationSettings",
+            "fabro_types::settings::server::JiraIntegrationSettings",
+            &[],
+        ),
+        (
             "SlackIntegrationSettings",
             "fabro_types::settings::server::SlackIntegrationSettings",
             &[],

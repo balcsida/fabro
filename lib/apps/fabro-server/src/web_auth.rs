@@ -809,7 +809,12 @@ async fn logout(
     headers: HeaderMap,
 ) -> Response {
     info!("User logged out");
+    // Seed the jar with the request's session cookie: `remove` only emits an
+    // expiring Set-Cookie for cookies the jar knows came from the client.
     let mut jar = CookieJar::new();
+    if let Some(cookie) = parse_cookie_header(&headers).get(SESSION_COOKIE_NAME) {
+        jar.add_original(cookie.clone());
+    }
     if let Some(key) = state.session_key() {
         if let Some(session) = read_private_session(&headers, &key) {
             auth_slot.replace(auth_context_from_session(&session));

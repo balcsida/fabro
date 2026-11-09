@@ -6780,6 +6780,32 @@ async fn logout_redirects_to_login_page() {
 }
 
 #[tokio::test]
+async fn logout_expires_the_session_cookie() {
+    let app = test_app_with();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/auth/logout")
+                .header(axum::http::header::COOKIE, "__fabro_session=anything")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let response = checked_response!(response, StatusCode::SEE_OTHER).await;
+    let cleared = response
+        .headers()
+        .get_all(axum::http::header::SET_COOKIE)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .any(|value| value.starts_with("__fabro_session=") && value.contains("Max-Age=0"));
+    assert!(cleared, "logout must expire the session cookie");
+}
+
+#[tokio::test]
 async fn static_favicon_is_served() {
     let app = test_app_with();
 

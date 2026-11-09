@@ -219,6 +219,17 @@ function NavLink({
   );
 }
 
+// Closing the menu unmounts its items before the browser submits a form inside
+// them ("Form submission canceled because the form is not connected"), so
+// submit from a detached form instead.
+export function signOut() {
+  const form = document.createElement("form");
+  form.method = "POST";
+  form.action = "/auth/logout";
+  document.body.append(form);
+  form.submit();
+}
+
 function UserMenu({ user, canSignOut, collapsed }: { user: ShellUser; canSignOut: boolean; collapsed: boolean }) {
   return (
     <Menu as="div">
@@ -253,11 +264,9 @@ function UserMenu({ user, canSignOut, collapsed }: { user: ShellUser; canSignOut
         </MenuItem>
         {canSignOut ? (
           <MenuItem>
-            <form method="POST" action="/auth/logout">
-              <button type="submit" className="block w-full px-4 py-2 text-left text-sm text-fg-3 data-focus:bg-overlay data-focus:outline-hidden">
-                Sign out
-              </button>
-            </form>
+            <button type="button" onClick={signOut} className="block w-full px-4 py-2 text-left text-sm text-fg-3 data-focus:bg-overlay data-focus:outline-hidden">
+              Sign out
+            </button>
           </MenuItem>
         ) : null}
       </MenuItems>
@@ -486,19 +495,18 @@ export function MobileNavigation({ pathname, user, canSignOut, homeHref }: Sideb
                 Profile
               </Link>
               {canSignOut ? (
-                <form method="POST" action="/auth/logout">
-                  <button
-                    type="submit"
-                    className={classNames(
-                      "block w-full px-2 py-2 text-left",
-                      ROW,
-                      ROW_IDLE,
-                      FOCUS_RING,
-                    )}
-                  >
-                    Sign out
-                  </button>
-                </form>
+                <button
+                  type="button"
+                  onClick={signOut}
+                  className={classNames(
+                    "block w-full px-2 py-2 text-left",
+                    ROW,
+                    ROW_IDLE,
+                    FOCUS_RING,
+                  )}
+                >
+                  Sign out
+                </button>
               ) : null}
             </div>
           </DialogPanel>

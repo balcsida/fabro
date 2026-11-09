@@ -647,9 +647,10 @@ mod observer_tests {
             &f.state,
             f.run_id,
             PlatformRecord::PullRequestLinked(PullRequestLinkedRecord {
-                owner:  "o".into(),
-                repo:   "r".into(),
-                number: 7,
+                owner:    "o".into(),
+                repo:     "r".into(),
+                number:   7,
+                html_url: None,
             }),
         )
         .await

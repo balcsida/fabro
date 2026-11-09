@@ -3783,6 +3783,7 @@ fn apply_lifecycle_to_managed_run(state: &AppState, run_id: RunId, record: &RunL
         RunLifecycleKind::Runnable
         | RunLifecycleKind::StartRequested
         | RunLifecycleKind::Approved
+        | RunLifecycleKind::AutoApproved
         | RunLifecycleKind::Denied
         | RunLifecycleKind::CancelRequested
         | RunLifecycleKind::PauseRequested

@@ -2054,3 +2054,15 @@ auto_approve = true
 
     assert!(settings.children.auto_approve);
 }
+
+#[test]
+fn run_agent_skills_default_empty_and_round_trip_from_toml() {
+    let defaults = workflow_settings_from_toml("_version = 1\n").expect("defaults resolve");
+    assert!(defaults.run.agent.skills.is_empty());
+
+    let settings = workflow_settings_from_toml(
+        "_version = 1\n\n[run.agent]\nskills = [\"team-skills\", \"more\"]\n",
+    )
+    .expect("skills resolve");
+    assert_eq!(settings.run.agent.skills, ["team-skills", "more"]);
+}

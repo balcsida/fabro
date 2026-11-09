@@ -66,6 +66,7 @@ approval = "auto"
     assert_eq!(json["run"]["goal"]["value"], "Ship it");
     assert_eq!(json["run"]["execution"]["approval"], "auto");
     assert_eq!(json["run"]["agent"]["fabro_tools"], false);
+    assert_eq!(json["run"]["agent"]["skills"], serde_json::json!([]));
     assert!(json["run"]["agent"].get("permissions").is_none());
     assert_eq!(
         json["run"]["environment"]["image"]["docker"],

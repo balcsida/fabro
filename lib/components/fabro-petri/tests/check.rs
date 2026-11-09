@@ -427,6 +427,38 @@ async fn a_launch_goal_replaces_the_graphs_goal_on_the_admitted_graph_and_its_st
     assert_eq!(goal_of(Launch::default()), "The bundle's goal");
 }
 
+/// `[run.agent] skills` reaches the admitted agent stage as `skill_dirs`.
+#[tokio::test]
+async fn run_agent_skills_reach_the_admitted_agent_stage_as_skill_dirs() {
+    const AGENT_WORKFLOW: &str = r#"digraph Agent {
+    graph [goal="g"]
+    start [shape=Mdiamond]
+    exit [shape=Msquare]
+    work [shape=box, prompt="Do the work"]
+    start -> work -> exit
+}"#;
+    let settings = format!("{SETTINGS}[run.agent]\nskills = [\"team-skills\", \"more\"]\n");
+    let admitted = check::check(&request(
+        bundle(&[
+            ("workflow.fabro", AGENT_WORKFLOW),
+            ("workflow.toml", &settings),
+        ]),
+        RuntimeSpec::default(),
+    ))
+    .expect("the agent bundle is admitted");
+    let stage = admitted
+        .graph
+        .body
+        .nodes
+        .iter()
+        .find(|node| node.name == "work")
+        .expect("the agent stage is admitted");
+    assert_eq!(
+        stage.step.config["skill_dirs"],
+        serde_json::json!(["team-skills", "more"])
+    );
+}
+
 /// Dry-run admission must cover child workflows too, and its rewritten
 /// graphs must survive the same digest-checked persistence as any other run.
 #[tokio::test]

@@ -602,6 +602,13 @@ One workflow-agent exception is intentional: `fabro_run_create` always creates [
 
 This setting is independent of `[run.agent.mcps]`, which configures external MCP servers available to the agent.
 
+`skills` lists extra skill directories, relative to the workspace root in the sandbox (default `[]`). They are searched after the convention directories (the global skills directory, `.fabro/skills`, and `skills`), so a skill from a configured directory overrides a convention skill of the same name.
+
+```toml title="run.toml"
+[run.agent]
+skills = ["team-skills"]
+```
+
 ### `[run.agent.mcps]`
 
 Configure [MCP servers](/agents/mcp) available to agent stages during the workflow run. Each server is a named TOML table under `[run.agent.mcps]`. All three transport types are supported: `stdio`, `http`, and `sandbox`.

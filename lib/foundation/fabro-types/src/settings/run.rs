@@ -1350,6 +1350,8 @@ pub struct RunAgentSettings {
     #[serde(default)]
     pub fabro_tools: bool,
     pub mcps:        HashMap<String, ResolvedMcpEntry>,
+    #[serde(default)]
+    pub skills:      Vec<String>,
 }
 
 /// An MCP entry in a run's agent settings: either an inline resolved server or

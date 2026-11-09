@@ -20,4 +20,5 @@ import type { McpServerSettings } from './mcp-server-settings';
 export interface RunAgentSettings {
     'fabro_tools': boolean;
     'mcps': { [key: string]: McpServerSettings; };
+    'skills'?: Array<string>;
 }

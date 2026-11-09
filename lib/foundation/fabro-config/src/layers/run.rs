@@ -426,6 +426,13 @@ pub struct RunAgentLayer {
     #[serde(default, skip_serializing_if = "StickyMap::is_empty")]
     #[option(value_type = "table")]
     pub mcps: StickyMap<McpEntryLayer>,
+
+    /// Extra skill directories, relative to the workspace root in the sandbox.
+    /// Searched after the convention directories; a skill here overrides a
+    /// convention skill of the same name.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[option(default = "[]", value_type = "array of strings")]
+    pub skills: Vec<StringOrSplice>,
 }
 
 /// A single MCP entry. `type` selects the transport; `script`/`command` are

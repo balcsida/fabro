@@ -16399,6 +16399,10 @@ components:
           type: object
           additionalProperties:
             $ref: "#/components/schemas/McpServerSettings"
+        skills:
+          type: array
+          items:
+            type: string
 
     McpServerSettings:
       type: object
